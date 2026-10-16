@@ -34,6 +34,7 @@ def migrate(conn):
         conn.execute("ALTER TABLE USERS ADD COLUMN STATUS TEXT DEFAULT 'active'")
     round_cols = _columns(conn, "ROUNDS")
     for col, ddl in [
+        ("TEACHER_ID", "INTEGER"),
         ("PROMOTE_MODE", "TEXT DEFAULT 'auto'"),
         ("MAX_WISH", "INTEGER DEFAULT 3"),
         ("LOTTERY_SEED", "TEXT"),
@@ -41,6 +42,8 @@ def migrate(conn):
     ]:
         if col not in round_cols:
             conn.execute(f"ALTER TABLE ROUNDS ADD COLUMN {col} {ddl}")
+    if "ADVISOR_ID" not in user_cols:
+        conn.execute("ALTER TABLE USERS ADD COLUMN ADVISOR_ID INTEGER")
     sel_cols = _columns(conn, "SELECTIONS")
     if "WISH_NO" not in sel_cols:
         conn.execute("ALTER TABLE SELECTIONS ADD COLUMN WISH_NO INTEGER")
@@ -83,11 +86,12 @@ def seed(conn):
         ("20230105", "chenqi", "123456", "陈琦", "软工2301", 2.9, "student"),
         ("T2001", "teacher", "123456", "刘老师", None, 0, "teacher"),
     ]
+    # 刘老师(T2001)的工号为 6，学生默认绑定到刘老师
     for no, name, pwd, real, cls, gpa, role in users:
         conn.execute(
-            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,DEPT,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES(?,?,?,?,?,?,?,'软件学院','active','system',?,1)",
-            (no, name, generate_password_hash(pwd), real, cls, gpa, role, ts),
+            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,DEPT,ADVISOR_ID,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES(?,?,?,?,?,?,?,'软件学院',CASE WHEN ?='student' THEN 6 ELSE NULL END,'active','system',?,1)",
+            (no, name, generate_password_hash(pwd), real, cls, gpa, role, role, ts),
         )
     topics = [
         ("T01", "基于Flask的图书管理系统", "实现图书的增删改查、借阅管理与读者统计", "Web开发", "较易", 3),
@@ -103,11 +107,14 @@ def seed(conn):
             " VALUES(?,?,?,?,?,?,6,'open','system',?,1)",
             (code, name, desc, tag, diff, max_num, ts),
         )
-    conn.execute(
-        "INSERT INTO ROUNDS(ROUND_NAME,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,MAX_WISH,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-        " VALUES('2026春季课设选题·第一轮','first_come','2026-03-16 08:00:00','2026-06-30 18:00:00',1,'auto',3,'open','system',?,1)",
-        (ts,),
-    )
+    # 每位教师默认拥有一个自己的轮次（刘老师 ID=6）
+    teacher = conn.execute("SELECT ID FROM USERS WHERE ROLE='teacher' AND FLAG=1").fetchone()
+    if teacher:
+        conn.execute(
+            "INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,MAX_WISH,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES('2026春季课设选题·第一轮',?,'first_come','2026-03-16 08:00:00','2026-06-30 18:00:00',1,'auto',3,'open','system',?,1)",
+            (teacher["ID"], ts),
+        )
     conn.execute(
         "INSERT INTO ANNOUNCEMENTS(TITLE,CONTENT,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
         " VALUES('选题须知','每人限选1题；满员题目可加入候补；退选后名额按递补策略处理。',?,'system',?,1)",

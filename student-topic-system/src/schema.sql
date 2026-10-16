@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS USERS (
     GPA            REAL DEFAULT 0.0,                  -- 绩点
     ROLE           TEXT NOT NULL DEFAULT 'student',   -- student / teacher / admin
     DEPT           TEXT,
+    ADVISOR_ID     INTEGER,                           -- 学生所属指导教师（教师/管理员为空）
     STATUS         TEXT NOT NULL DEFAULT 'active',    -- active / disabled（停用后禁止登录）
     CREATED_BY     TEXT,
     CREATED_AT     TEXT,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS TOPICS (
 CREATE TABLE IF NOT EXISTS ROUNDS (
     ID             INTEGER PRIMARY KEY AUTOINCREMENT,
     ROUND_NAME     TEXT NOT NULL,
+    TEACHER_ID     INTEGER,                           -- 轮次归属教师（每位教师管理自己的轮次）
     RULE           TEXT DEFAULT 'first_come',         -- first_come/gpa_priority/multi_wish/lottery
     START_AT       TEXT,
     END_AT         TEXT,

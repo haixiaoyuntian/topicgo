@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 {% block title %}浏览题库 - 学生选题系统{% endblock %}
 {% block content %}
-{% if round %}
-<div class="notice">⏰ 本轮选题截止：{{ round.END_AT }}｜模式：{{ rule_name }}
+{% if not advisor %}
+<div class="notice notice-red">你尚未分配指导教师，请联系系统管理员登记；登记后只能看到自己老师的开放课题。</div>
+{% elif not round %}
+<div class="notice notice-red">你的指导教师（{{ advisor.REAL_NAME }}）尚未开放选题，请等待老师发布。</div>
+{% else %}
+<div class="notice">👨‍🏫 指导教师：{{ advisor.REAL_NAME }}｜⏰ 本轮截止：{{ round.END_AT }}｜模式：{{ rule_name }}
   {% if round.ALLOW_CLASSES %}｜仅限班级：{{ round.ALLOW_CLASSES }}{% endif %}
   {% if round.PROMOTE_MODE == 'auto' %}｜退选自动递补{% elif round.PROMOTE_MODE == 'manual' %}｜退选后教师手动递补{% else %}｜候补不递补{% endif %}
 </div>
 {% if not class_ok %}<div class="notice notice-red">你的班级不在本轮允许范围内，暂不能选题。</div>{% endif %}
-{% else %}
-<div class="notice notice-red">当前不在选题窗口期，请联系任课教师。</div>
 {% endif %}
 
 <div class="card">
@@ -61,7 +63,7 @@
           {% elif round and round.RULE == 'multi_wish' %}
             <a class="btn btn-primary btn-sm" href="{{ url_for('student_wish') }}">填志愿</a>
           {% elif mine %}<button class="btn btn-default btn-sm" disabled>你已选题</button>
-          {% elif not round or not class_ok %}<button class="btn btn-default btn-sm" disabled>不可选</button>
+          {% elif not round or not class_ok or not advisor %}<button class="btn btn-default btn-sm" disabled>不可选</button>
           {% elif left > 0 %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
             <button class="btn btn-primary btn-sm" onclick="return confirm('确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>

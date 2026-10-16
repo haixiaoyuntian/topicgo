@@ -24,11 +24,6 @@
     {% else %}
     <div class="menu-group">系统管理</div>
     <a class="menu-item {{ 'active' if request.endpoint=='admin_users' }}" href="{{ url_for('admin_users') }}">👥 用户管理</a>
-    <div class="menu-group">选题业务</div>
-    <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
-    <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
-    <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
-    <a class="menu-item {{ 'active' if request.endpoint=='teacher_logs' }}" href="{{ url_for('teacher_logs') }}">🧾 操作日志</a>
     {% endif %}
   </aside>
   <div class="main">

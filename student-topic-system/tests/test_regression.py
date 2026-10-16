@@ -61,6 +61,7 @@ def reset_round(rule="first_come", **kw):
 
 
 rid = sql("SELECT ID FROM ROUNDS")[0]["ID"]
+TEACHER_ID = sql("SELECT ID FROM USERS WHERE USER_NAME='teacher'")[0]["ID"]
 
 # ---------- 1. 退选留痕 ----------
 print("\n== 1. 退选留痕 ==")
@@ -117,7 +118,7 @@ print("\n== 4. 权限管控 ==")
 admin = login("admin")
 post(admin, "/admin/users", data={"action": "add", "user_no": "TEST99", "user_name": "test99",
                                   "real_name": "测试99", "class_name": "软工2309", "gpa": "3.0",
-                                  "role": "student"})
+                                  "role": "student", "advisor_id": TEACHER_ID})
 check("管理员创建用户", sql("SELECT COUNT(*) c FROM USERS WHERE USER_NAME='test99'")[0]["c"] == 1)
 t99 = login("test99")
 check("新用户可登录", "浏览题库" in get(t99, "/student/browse"))
@@ -137,7 +138,9 @@ post(admin, "/admin/users", data={"action": "toggle", "user_id": uid})
 check("学生不能访问管理页", "无权限" in get(login("zhangsan"), "/admin/users") or "无权限" in get(login("zhangsan"), "/admin/users"))
 check("教师不能访问用户管理", "无权限" in get(login("teacher"), "/admin/users"))
 check("教师可访问监控", "选题监控" in get(login("teacher"), "/teacher/monitor"))
-check("管理员可访问监控", "选题监控" in get(admin, "/teacher/monitor"))
+check("管理员不涉及课程业务(不能访问监控)", "无权限" in get(admin, "/teacher/monitor"))
+check("管理员不能访问题库", "无权限" in get(admin, "/teacher/topics"))
+check("管理员可访问用户管理", "用户管理" in get(admin, "/admin/users"))
 
 # ---------- 5. 未登记用户不能登录 ----------
 print("\n== 5. 未登记用户拒绝 ==")
@@ -197,11 +200,16 @@ for i in range(1, 7):
         conn = sqlite3.connect(DB)
         from werkzeug.security import generate_password_hash
         conn.execute(
-            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES(?,?,?,?,'软工TEST',3.0,'student','active','test','2026-01-01',1)",
-            (no, name, generate_password_hash("123456"), f"并发{i}"))
+            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,ADVISOR_ID,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES(?,?,?,?,'软工TEST',3.0,'student',?,'active','test','2026-01-01',1)",
+            (no, name, generate_password_hash("123456"), f"并发{i}", TEACHER_ID))
         conn.commit()
         conn.close()
+    # 兼容历史数据：确保并发测试用户都绑定指导教师
+    conn = sqlite3.connect(DB)
+    conn.execute("UPDATE USERS SET ADVISOR_ID=? WHERE USER_NAME LIKE 'cc%'", (TEACHER_ID,))
+    conn.commit()
+    conn.close()
 results = []
 lock = threading.Lock()
 
@@ -221,6 +229,44 @@ for t in threads:
     t.join()
 conf = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE STATUS='confirmed' AND TOPIC_ID=(SELECT ID FROM TOPICS WHERE TOPIC_CODE='T02')")[0]["c"]
 check("6人抢3名额不超卖", conf <= 3, f"conf={conf}")
+
+# ---------- 10. 师生归属隔离 ----------
+print("\n== 10. 师生归属隔离 ==")
+admin = login("admin")
+post(admin, "/admin/users", data={"action": "add", "user_no": "T3002", "user_name": "teacher2",
+                                  "real_name": "王老师", "role": "teacher"})
+post(admin, "/admin/users", data={"action": "add", "user_no": "20230106", "user_name": "stu2",
+                                  "real_name": "周同学", "class_name": "软工2303", "gpa": "3.6",
+                                  "role": "student", "advisor_id": TEACHER_ID})
+T2 = sql("SELECT ID FROM USERS WHERE USER_NAME='teacher2'")[0]["ID"]
+post(admin, "/admin/users", data={"action": "add", "user_no": "20230107", "user_name": "stu_of_t2",
+                                  "real_name": "吴同学", "class_name": "软工2303", "gpa": "3.1",
+                                  "role": "student", "advisor_id": T2})
+reset_round()
+# teacher2 发布自己的课题
+t2 = login("teacher2")
+post(t2, "/teacher/topics", data={"action": "add", "topic_code": "U01", "topic_name": "王老师的课题A",
+                                  "tag": "数据分析", "difficulty": "中等", "max_num": "2"})
+check("teacher2 发布自己的课题", sql("SELECT COUNT(*) c FROM TOPICS WHERE TOPIC_CODE='U01' AND TEACHER_ID=?", (T2,))[0]["c"] == 1)
+# stu_of_t2 只能看到 U01，看不到刘老师的 T05
+body = get(login("stu_of_t2"), "/student/browse")
+check("stu_of_t2 看不到其他老师的课题", "U01" in body and "T05" not in body and "区块链" not in body)
+body = post(login("stu_of_t2"), "/student/select/5")
+check("stu_of_t2 不能选其他老师的课题", "不属于你的指导教师" in body or "尚未开放选题" in body)
+# teacher2 看不到刘老师的课题
+body = get(t2, "/teacher/topics")
+check("teacher2 看不到他人课题", "U01" in body and "区块链" not in body and "T05" not in body)
+# teacher2 没有轮次时监控为空
+body = get(t2, "/teacher/monitor")
+check("teacher2 无轮次时监控为空", "题目总数" in body)
+# 教师只能改自己的课题：teacher2 尝试编辑刘老师的 T05（ID=5）
+post(t2, "/teacher/topics", data={"action": "edit", "topic_id": "5", "topic_name": "篡改",
+                                  "max_num": "99"})
+name5 = sql("SELECT TOPIC_NAME FROM TOPICS WHERE ID=5")[0]["TOPIC_NAME"]
+check("教师不能改他人课题", name5 != "篡改")
+# 学生登录后能看到自己老师的课题
+body = get(login("zhangsan"), "/student/browse")
+check("zhangsan 看到刘老师的课题", "区块链" in body or "T05" in body)
 
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")

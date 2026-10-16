@@ -1,8 +1,12 @@
 """学生选题系统 TopicGo - 应用入口与路由
 
+角色与职责：
+  admin   系统管理员：仅负责平台账户管理（登记/停用/重置密码/删除），不涉及课程业务
+  teacher 教师：仅管理自己发布的课题、自己的选题轮次、自己学生的选题过程
+  student 学生：仅能看到自己指导教师发布且已开放的课题
+
 策略模式：first_come 先到先得 / gpa_priority 绩点优先 /
           multi_wish 多志愿分配 / lottery 随机抽签（种子公开可复现）
-权限模型：student 学生 / teacher 教师 / admin 系统管理员（仅登记账号可登录）
 过程留痕：选题、退选、递补、分配、抽签全部写入 SELECTION_EVENTS 操作日志
 """
 import csv
@@ -36,7 +40,6 @@ ACTION_NAMES = {
     "promote": "递补",
     "allocate": "志愿分配",
     "lottery": "抽签",
-    "manual_promote": "手动递补",
 }
 STATUS_NAMES = {
     "confirmed": "已确认",
@@ -56,28 +59,25 @@ def login_required(*roles):
             if "user_id" not in session:
                 return redirect(url_for("login"))
             if roles and session.get("role") not in roles:
-                flash("无权限访问，请联系管理员", "error")
+                flash("无权限访问", "error")
                 return redirect(url_for("index"))
             return f(*args, **kwargs)
         return wrapper
     return deco
 
 
-def staff_required(f):
-    """教师与管理员均可访问"""
-    return login_required("teacher", "admin")(f)
-
-
 def current_user(conn):
     return conn.execute("SELECT * FROM USERS WHERE ID=?", (session["user_id"],)).fetchone()
 
 
-def active_round(conn):
-    """当前开放的选题轮次（状态 open 且处于时间窗口内）"""
+def active_round(conn, teacher_id):
+    """指定教师当前开放的选题轮次（状态 open 且处于时间窗口内）"""
+    if not teacher_id:
+        return None
     now = now_str()
     return conn.execute(
-        "SELECT * FROM ROUNDS WHERE STATUS='open' AND START_AT<=? AND END_AT>=? AND FLAG=1",
-        (now, now),
+        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND STATUS='open' AND START_AT<=? AND END_AT>=? AND FLAG=1",
+        (teacher_id, now, now),
     ).fetchone()
 
 
@@ -106,7 +106,7 @@ def topic_stats(conn, round_id, status="confirmed"):
 def user_active_selection(conn, round_id, user_id):
     """用户在当前轮次的有效记录（confirmed/waiting/wish/entry）"""
     return conn.execute(
-        "SELECT s.*, t.TOPIC_NAME FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+        "SELECT s.*, t.TOPIC_NAME, t.TOPIC_CODE FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
         " WHERE s.ROUND_ID=? AND s.USER_ID=? AND s.STATUS IN('confirmed','waiting','wish','entry')",
         (round_id, user_id),
     ).fetchall()
@@ -138,6 +138,14 @@ def promote_next(conn, rnd, topic_id, operator="system"):
               "waiting", "confirmed", queue_no=nxt["QUEUE_NO"], operator=operator,
               remark="退选自动递补" if operator != "teacher" else "教师手动递补")
     return nxt
+
+
+def own_round(conn):
+    """教师自己的轮次（无则返回最新创建的占位）"""
+    rnd = conn.execute(
+        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND FLAG=1 ORDER BY ID DESC",
+        (session["user_id"],)).fetchone()
+    return rnd
 
 
 # ---------------- 认证 ----------------
@@ -192,9 +200,13 @@ def student_browse():
     tag = request.args.get("tag", "").strip()
     diff = request.args.get("diff", "").strip()
     conn = get_conn()
-    rnd = active_round(conn)
-    sql = "SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1"
-    args = []
+    user = current_user(conn)
+    advisor = conn.execute("SELECT * FROM USERS WHERE ID=?", (user["ADVISOR_ID"],)).fetchone() \
+        if user["ADVISOR_ID"] else None
+    rnd = active_round(conn, user["ADVISOR_ID"])
+    # 学生只能看到自己指导教师发布的课题
+    sql = "SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1 AND TEACHER_ID=?"
+    args = [user["ADVISOR_ID"]]
     if kw:
         sql += " AND (TOPIC_NAME LIKE ? OR TOPIC_DESC LIKE ?)"
         args += [f"%{kw}%", f"%{kw}%"]
@@ -204,19 +216,20 @@ def student_browse():
     if diff:
         sql += " AND DIFFICULTY=?"
         args.append(diff)
-    topics = conn.execute(sql + " ORDER BY TOPIC_CODE", args).fetchall()
+    topics = conn.execute(sql + " ORDER BY TOPIC_CODE", args).fetchall() if advisor else []
     stats = topic_stats(conn, rnd["ID"]) if rnd else {}
     wishes = topic_stats(conn, rnd["ID"], "wish") if rnd else {}
     entries = topic_stats(conn, rnd["ID"], "entry") if rnd else {}
     mine = user_active_selection(conn, rnd["ID"], session["user_id"]) if rnd else []
-    user = current_user(conn)
-    tags = [r["TAG"] for r in conn.execute("SELECT DISTINCT TAG FROM TOPICS WHERE TAG IS NOT NULL")]
+    tags = [r["TAG"] for r in conn.execute(
+        "SELECT DISTINCT TAG FROM TOPICS WHERE TAG IS NOT NULL AND TEACHER_ID=?",
+        (user["ADVISOR_ID"],))] if advisor else []
     class_ok = class_allowed(rnd, user["CLASS_NAME"])
     conn.close()
     return render_template("student/browse.html", topics=topics, stats=stats, wishes=wishes,
                            entries=entries, mine=mine, round=rnd, tags=tags, kw=kw, tag=tag,
                            diff=diff, rule_name=RULE_NAMES.get(rnd["RULE"] if rnd else "", ""),
-                           class_ok=class_ok)
+                           class_ok=class_ok, advisor=advisor)
 
 
 @app.route("/student/select/<int:topic_id>", methods=["POST"])
@@ -225,9 +238,9 @@ def student_select(topic_id):
     """先到先得 / 绩点优先 / 分组轮选模式下的直接选题"""
     conn = get_conn()
     user = current_user(conn)
-    rnd = active_round(conn)
+    rnd = active_round(conn, user["ADVISOR_ID"])
     if not rnd:
-        flash("当前不在选题窗口期内", "error")
+        flash("你的指导教师尚未开放选题，请等待老师发布", "error")
         conn.close()
         return redirect(url_for("student_browse"))
     if rnd["RULE"] in ("multi_wish", "lottery"):
@@ -246,18 +259,20 @@ def student_select(topic_id):
     if rnd["RULE"] == "gpa_priority":
         higher = conn.execute(
             "SELECT COUNT(*) c FROM USERS u WHERE u.ROLE='student' AND u.GPA>? AND u.FLAG=1"
-            " AND u.STATUS='active' AND NOT EXISTS(SELECT 1 FROM SELECTIONS s"
+            " AND u.STATUS='active' AND u.ADVISOR_ID=? AND NOT EXISTS(SELECT 1 FROM SELECTIONS s"
             " WHERE s.ROUND_ID=? AND s.USER_ID=u.ID AND s.STATUS='confirmed')",
-            (user["GPA"], rnd["ID"]),
+            (user["GPA"], user["ADVISOR_ID"], rnd["ID"]),
         ).fetchone()["c"]
         if higher > 0:
             flash(f"绩点优先模式下，还有 {higher} 位绩点高于你的同学未选题，请稍候", "error")
             conn.close()
             return redirect(url_for("student_browse"))
-    topic = conn.execute("SELECT * FROM TOPICS WHERE ID=? AND STATUS='open' AND FLAG=1",
-                         (topic_id,)).fetchone()
+    # 只能选自己老师发布的课题
+    topic = conn.execute(
+        "SELECT * FROM TOPICS WHERE ID=? AND STATUS='open' AND FLAG=1 AND TEACHER_ID=?",
+        (topic_id, user["ADVISOR_ID"])).fetchone()
     if not topic:
-        flash("题目不存在或已关闭", "error")
+        flash("题目不存在、已关闭或不属于你的指导教师", "error")
         conn.close()
         return redirect(url_for("student_browse"))
 
@@ -311,7 +326,7 @@ def student_wish():
     """多志愿填报 / 抽签报名"""
     conn = get_conn()
     user = current_user(conn)
-    rnd = active_round(conn)
+    rnd = active_round(conn, user["ADVISOR_ID"])
     if not rnd or rnd["RULE"] not in ("multi_wish", "lottery"):
         flash("当前轮次不是志愿填报/报名模式", "error")
         conn.close()
@@ -320,7 +335,9 @@ def student_wish():
         flash(f"本轮仅限班级 [{rnd['ALLOW_CLASSES']}] 参与", "error")
         conn.close()
         return redirect(url_for("student_browse"))
-    topics = conn.execute("SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1 ORDER BY TOPIC_CODE").fetchall()
+    topics = conn.execute(
+        "SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
+        (user["ADVISOR_ID"],)).fetchall()
 
     if request.method == "POST":
         existing = user_active_selection(conn, rnd["ID"], user["ID"])
@@ -342,8 +359,9 @@ def student_wish():
         try:
             for item in picked:
                 wish_no, code = item.split(":")
-                topic = conn.execute("SELECT * FROM TOPICS WHERE TOPIC_CODE=? AND STATUS='open'",
-                                     (code,)).fetchone()
+                topic = conn.execute(
+                    "SELECT * FROM TOPICS WHERE TOPIC_CODE=? AND STATUS='open' AND TEACHER_ID=?",
+                    (code, user["ADVISOR_ID"])).fetchone()
                 if not topic:
                     continue
                 if rnd["RULE"] == "lottery":
@@ -423,15 +441,15 @@ def student_cancel(selection_id):
 def student_mine():
     """我的选题 + 历史记录（含退选痕迹）"""
     conn = get_conn()
-    rnd = active_round(conn) or conn.execute(
-        "SELECT * FROM ROUNDS WHERE FLAG=1 ORDER BY ID DESC").fetchone()
+    user = current_user(conn)
+    rnd = active_round(conn, user["ADVISOR_ID"]) or own_round_for_student(conn, user)
     active, history = [], []
     if rnd:
         rows = conn.execute(
             "SELECT s.*, t.TOPIC_NAME, t.TOPIC_CODE, t.MAX_NUM, r.ROUND_NAME, r.RULE"
             " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN ROUNDS r ON r.ID=s.ROUND_ID"
             " WHERE s.ROUND_ID=? AND s.USER_ID=? ORDER BY s.ID DESC",
-            (rnd["ID"], session["user_id"]),
+            (rnd["ID"], user["ID"]),
         ).fetchall()
         active = [r for r in rows if r["STATUS"] in ("confirmed", "waiting", "wish", "entry")]
         history = [r for r in rows if r["STATUS"] == "cancelled"]
@@ -441,58 +459,35 @@ def student_mine():
                            status_names=STATUS_NAMES)
 
 
+def own_round_for_student(conn, user):
+    """学生查看自己老师最新的一个轮次（含未开放的），用于展示历史"""
+    if not user["ADVISOR_ID"]:
+        return None
+    return conn.execute(
+        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND FLAG=1 ORDER BY ID DESC",
+        (user["ADVISOR_ID"],)).fetchone()
+
+
 @app.route("/student/public")
-@login_required()
+@login_required("student")
 def student_public():
+    """结果公示：只能看到自己指导教师课题的选题结果"""
     conn = get_conn()
+    user = current_user(conn)
     rows = conn.execute(
         "SELECT t.TOPIC_CODE, t.TOPIC_NAME, u.REAL_NAME, u.CLASS_NAME, s.SELECTED_AT, s.STATUS"
         " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN USERS u ON u.ID=s.USER_ID"
-        " WHERE s.STATUS='confirmed' ORDER BY t.TOPIC_CODE, s.SELECTED_AT"
+        " WHERE s.STATUS='confirmed' AND t.TEACHER_ID=? ORDER BY t.TOPIC_CODE, s.SELECTED_AT",
+        (user["ADVISOR_ID"],),
     ).fetchall()
     conn.close()
     return render_template("student/public.html", rows=rows)
 
 
-# ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------
-
-PROJECT_ROOT = os.path.dirname(BASE_DIR)  # student-topic-system 目录
-
-
-@app.route("/prototype")
-def prototype_page():
-    """可交互原型（无需登录，方便交叉评估时查看）"""
-    return send_file(os.path.join(PROJECT_ROOT, "prototype", "prototype.html"))
-
-
-@app.route("/home")
-def home_page():
-    """项目介绍主页"""
-    return send_file(os.path.join(PROJECT_ROOT, "website", "index.html"))
-
-
-@app.route("/index.html")
-def home_page_html():
-    """兼容相对链接：网站内互相跳转使用"""
-    return home_page()
-
-
-@app.route("/flow.html")
-def guide_page_html():
-    """兼容相对链接"""
-    return guide_page()
-
-
-@app.route("/guide")
-def guide_page():
-    """图文版使用流程"""
-    return send_file(os.path.join(PROJECT_ROOT, "website", "flow.html"))
-
-
-# ---------------- 教师 / 管理员：题库 ----------------
+# ---------------- 教师端：题库（仅自己的课题） ----------------
 
 @app.route("/teacher/topics", methods=["GET", "POST"])
-@staff_required
+@login_required("teacher")
 def teacher_topics():
     conn = get_conn()
     if request.method == "POST":
@@ -506,30 +501,44 @@ def teacher_topics():
             else:
                 conn.execute(
                     "INSERT INTO TOPICS(TOPIC_CODE,TOPIC_NAME,TOPIC_DESC,TAG,DIFFICULTY,MAX_NUM,TEACHER_ID,CREATED_BY,CREATED_AT,FLAG)"
-                    " VALUES(?,?,?,?,?,?,?,'staff',?,1)",
+                    " VALUES(?,?,?,?,?,?,?,'teacher',?,1)",
                     (code, request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
                      int(request.form.get("max_num", 4)), session["user_id"], ts))
                 flash("题目已创建", "success")
         elif action == "edit":
-            conn.execute(
-                "UPDATE TOPICS SET TOPIC_NAME=?,TOPIC_DESC=?,TAG=?,DIFFICULTY=?,MAX_NUM=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
-                (request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
-                 request.form.get("tag", ""), request.form.get("difficulty", "中等"),
-                 int(request.form.get("max_num", 4)), me, ts, int(request.form["topic_id"])))
-            flash("题目已更新", "success")
+            # 仅能修改自己的课题
+            own = conn.execute("SELECT ID FROM TOPICS WHERE ID=? AND TEACHER_ID=?",
+                               (int(request.form["topic_id"]), session["user_id"])).fetchone()
+            if not own:
+                flash("无权修改他人课题", "error")
+            else:
+                conn.execute(
+                    "UPDATE TOPICS SET TOPIC_NAME=?,TOPIC_DESC=?,TAG=?,DIFFICULTY=?,MAX_NUM=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
+                    (request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
+                     request.form.get("tag", ""), request.form.get("difficulty", "中等"),
+                     int(request.form.get("max_num", 4)), me, ts, int(request.form["topic_id"])))
+                flash("题目已更新", "success")
         conn.commit()
         conn.close()
         return redirect(url_for("teacher_topics"))
-    topics = conn.execute("SELECT * FROM TOPICS WHERE FLAG=1 ORDER BY TOPIC_CODE").fetchall()
+    topics = conn.execute(
+        "SELECT * FROM TOPICS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
+        (session["user_id"],)).fetchall()
     conn.close()
     return render_template("teacher/topics.html", topics=topics)
 
 
 @app.route("/teacher/topics/delete/<int:topic_id>", methods=["POST"])
-@staff_required
+@login_required("teacher")
 def teacher_topic_delete(topic_id):
     conn = get_conn()
+    own = conn.execute("SELECT ID FROM TOPICS WHERE ID=? AND TEACHER_ID=?",
+                       (topic_id, session["user_id"])).fetchone()
+    if not own:
+        flash("无权删除他人课题", "error")
+        conn.close()
+        return redirect(url_for("teacher_topics"))
     used = conn.execute(
         "SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS IN('confirmed','waiting','wish','entry')",
         (topic_id,)).fetchone()["c"]
@@ -544,14 +553,21 @@ def teacher_topic_delete(topic_id):
     return redirect(url_for("teacher_topics"))
 
 
-# ---------------- 教师 / 管理员：轮次 ----------------
+# ---------------- 教师端：轮次（仅自己的轮次） ----------------
 
 @app.route("/teacher/round", methods=["GET", "POST"])
-@staff_required
+@login_required("teacher")
 def teacher_round():
     conn = get_conn()
     if request.method == "POST":
         ts = now_str()
+        rnd_id = int(request.form["round_id"])
+        own = conn.execute("SELECT ID FROM ROUNDS WHERE ID=? AND TEACHER_ID=?",
+                           (rnd_id, session["user_id"])).fetchone()
+        if not own:
+            flash("无权修改他人轮次", "error")
+            conn.close()
+            return redirect(url_for("teacher_round"))
         conn.execute(
             "UPDATE ROUNDS SET ROUND_NAME=?,RULE=?,START_AT=?,END_AT=?,WAITLIST_ON=?,PROMOTE_MODE=?,"
             "MAX_WISH=?,LOTTERY_SEED=?,ALLOW_CLASSES=?,STATUS=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
@@ -560,25 +576,23 @@ def teacher_round():
              request.form.get("promote_mode", "auto"), int(request.form.get("max_wish", 3)),
              request.form.get("lottery_seed", "").strip() or None,
              request.form.get("allow_classes", "").strip() or None,
-             request.form["status"], session["user_name"], ts, int(request.form["round_id"])))
+             request.form["status"], session["user_name"], ts, rnd_id))
         conn.commit()
         flash("轮次设置已保存", "success")
         conn.close()
         return redirect(url_for("teacher_round"))
-    rnd = active_round(conn) or conn.execute(
-        "SELECT * FROM ROUNDS WHERE FLAG=1 ORDER BY ID DESC").fetchone()
+    rnd = active_round(conn, session["user_id"]) or own_round(conn)
     conn.close()
     return render_template("teacher/round.html", round=rnd, rule_names=RULE_NAMES)
 
 
-# ---------------- 教师 / 管理员：监控与策略执行 ----------------
+# ---------------- 教师端：监控与策略执行（仅自己的课题） ----------------
 
 @app.route("/teacher/monitor")
-@staff_required
+@login_required("teacher")
 def teacher_monitor():
     conn = get_conn()
-    rnd = active_round(conn) or conn.execute(
-        "SELECT * FROM ROUNDS WHERE FLAG=1 ORDER BY ID DESC").fetchone()
+    rnd = active_round(conn, session["user_id"]) or own_round(conn)
     rows = []
     total_picked = total_left = wait_total = wish_total = entry_total = 0
     waiters = {}
@@ -587,7 +601,9 @@ def teacher_monitor():
         waits = topic_stats(conn, rnd["ID"], "waiting")
         wishes = topic_stats(conn, rnd["ID"], "wish")
         entries = topic_stats(conn, rnd["ID"], "entry")
-        topics = conn.execute("SELECT * FROM TOPICS WHERE FLAG=1 ORDER BY TOPIC_CODE").fetchall()
+        topics = conn.execute(
+            "SELECT * FROM TOPICS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
+            (session["user_id"],)).fetchall()
         for t in topics:
             picked = stats.get(t["ID"], 0)
             waiting = waits.get(t["ID"], 0)
@@ -600,12 +616,12 @@ def teacher_monitor():
             entry_total += entry_n
             rows.append(dict(topic=t, picked=picked, left=t["MAX_NUM"] - picked,
                              waiting=waiting, wish=wish_n, entry=entry_n))
-        # 候补名单（手动递备用）
         for r in conn.execute(
                 "SELECT s.*, u.REAL_NAME, u.USER_NO, t.TOPIC_NAME FROM SELECTIONS s"
                 " JOIN USERS u ON u.ID=s.USER_ID JOIN TOPICS t ON t.ID=s.TOPIC_ID"
-                " WHERE s.ROUND_ID=? AND s.STATUS='waiting' ORDER BY s.TOPIC_ID, s.QUEUE_NO",
-                (rnd["ID"],)).fetchall():
+                " WHERE s.ROUND_ID=? AND s.STATUS='waiting' AND t.TEACHER_ID=?"
+                " ORDER BY s.TOPIC_ID, s.QUEUE_NO",
+                (rnd["ID"], session["user_id"])).fetchall():
             waiters.setdefault(r["TOPIC_ID"], []).append(r)
     conn.close()
     return render_template("teacher/monitor.html", rows=rows, round=rnd,
@@ -615,11 +631,11 @@ def teacher_monitor():
 
 
 @app.route("/teacher/allocate", methods=["POST"])
-@staff_required
+@login_required("teacher")
 def teacher_allocate():
     """多志愿统一分配：按志愿序号依次处理，同志愿超员按绩点优先，未命中转第一志愿候补"""
     conn = get_conn()
-    rnd = active_round(conn)
+    rnd = own_round(conn)
     if not rnd or rnd["RULE"] != "multi_wish":
         flash("当前轮次不是多志愿模式", "error")
         conn.close()
@@ -629,10 +645,12 @@ def teacher_allocate():
     try:
         all_wishes = conn.execute(
             "SELECT s.*, u.GPA, u.USER_NAME FROM SELECTIONS s JOIN USERS u ON u.ID=s.USER_ID"
-            " WHERE s.ROUND_ID=? AND s.STATUS='wish' ORDER BY s.WISH_NO, u.GPA DESC, s.ID",
-            (rnd["ID"],)).fetchall()
+            " JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE s.ROUND_ID=? AND s.STATUS='wish' AND t.TEACHER_ID=?"
+            " ORDER BY s.WISH_NO, u.GPA DESC, s.ID",
+            (rnd["ID"], session["user_id"])).fetchall()
         assigned = set()
-        promoted_ids = set()  # 已在第一轮递补为 confirmed 的记录ID，第二轮必须跳过
+        promoted_ids = set()
         stats = {}
         for w in all_wishes:
             if w["USER_ID"] in assigned:
@@ -650,10 +668,9 @@ def teacher_allocate():
                 stats[w["TOPIC_ID"]] = used + 1
                 assigned.add(w["USER_ID"])
                 promoted_ids.add(w["ID"])
-        # 未命中的学生：第一志愿转候补，其余志愿作废（留痕）
         for w in all_wishes:
             if w["ID"] in promoted_ids:
-                continue  # 已递补成功的记录不能动
+                continue
             if w["USER_ID"] in assigned:
                 conn.execute(
                     "UPDATE SELECTIONS SET STATUS='cancelled', UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
@@ -685,11 +702,11 @@ def teacher_allocate():
 
 
 @app.route("/teacher/lottery", methods=["POST"])
-@staff_required
+@login_required("teacher")
 def teacher_lottery():
     """随机抽签：种子公开可复现，未中签者进候补，全过程写日志"""
     conn = get_conn()
-    rnd = active_round(conn)
+    rnd = own_round(conn)
     if not rnd or rnd["RULE"] != "lottery":
         flash("当前轮次不是随机抽签模式", "error")
         conn.close()
@@ -698,7 +715,9 @@ def teacher_lottery():
     ts = now_str()
     conn.execute("BEGIN IMMEDIATE")
     try:
-        topics = conn.execute("SELECT * FROM TOPICS WHERE FLAG=1 AND STATUS='open'").fetchall()
+        topics = conn.execute(
+            "SELECT * FROM TOPICS WHERE FLAG=1 AND STATUS='open' AND TEACHER_ID=?",
+            (session["user_id"],)).fetchall()
         rng = random.Random(seed)
         for t in topics:
             entries = conn.execute(
@@ -707,7 +726,7 @@ def teacher_lottery():
                 (rnd["ID"], t["ID"])).fetchall()
             if not entries:
                 continue
-            entries.sort(key=lambda e: (-e["GPA"], e["ID"]))  # 先按绩点降序，保证同种子结果稳定
+            entries.sort(key=lambda e: (-e["GPA"], e["ID"]))
             rng.shuffle(entries)
             for i, e in enumerate(entries):
                 if i < t["MAX_NUM"]:
@@ -739,14 +758,19 @@ def teacher_lottery():
 
 
 @app.route("/teacher/promote/<int:selection_id>", methods=["POST"])
-@staff_required
+@login_required("teacher")
 def teacher_manual_promote(selection_id):
-    """教师手动递补候补学生"""
+    """教师手动递补候补学生（仅限自己的课题）"""
     conn = get_conn()
-    sel = conn.execute("SELECT * FROM SELECTIONS WHERE ID=? AND STATUS='waiting'",
-                       (selection_id,)).fetchone()
+    sel = conn.execute(
+        "SELECT s.*, t.TEACHER_ID FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+        " WHERE s.ID=? AND s.STATUS='waiting'", (selection_id,)).fetchone()
     if not sel:
         flash("候补记录不存在", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    if sel["TEACHER_ID"] != session["user_id"]:
+        flash("无权操作他人课题的候补", "error")
         conn.close()
         return redirect(url_for("teacher_monitor"))
     topic = conn.execute("SELECT * FROM TOPICS WHERE ID=?", (sel["TOPIC_ID"],)).fetchone()
@@ -772,14 +796,16 @@ def teacher_manual_promote(selection_id):
 
 
 @app.route("/teacher/export")
-@staff_required
+@login_required("teacher")
 def teacher_export():
     conn = get_conn()
     rows = conn.execute(
         "SELECT t.TOPIC_CODE, t.TOPIC_NAME, u.USER_NO, u.REAL_NAME, u.CLASS_NAME, u.GPA,"
         " s.STATUS, s.WISH_NO, s.QUEUE_NO, s.SELECTED_AT FROM SELECTIONS s"
         " JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN USERS u ON u.ID=s.USER_ID"
-        " WHERE s.STATUS IN('confirmed','waiting') ORDER BY t.TOPIC_CODE, s.STATUS, s.QUEUE_NO"
+        " WHERE s.STATUS IN('confirmed','waiting') AND t.TEACHER_ID=?"
+        " ORDER BY t.TOPIC_CODE, s.STATUS, s.QUEUE_NO",
+        (session["user_id"],),
     ).fetchall()
     conn.close()
     buf = io.StringIO()
@@ -797,18 +823,18 @@ def teacher_export():
                              f"attachment; filename=selections.csv; filename*=UTF-8''{filename}"})
 
 
-# ---------------- 教师 / 管理员：操作日志 ----------------
+# ---------------- 教师端：操作日志（仅自己课题相关） ----------------
 
 @app.route("/teacher/logs")
-@staff_required
+@login_required("teacher")
 def teacher_logs():
     conn = get_conn()
     kw = request.args.get("kw", "").strip()
     action = request.args.get("action", "").strip()
     sql = ("SELECT e.*, t.TOPIC_NAME, u.REAL_NAME, u.USER_NO FROM SELECTION_EVENTS e"
            " LEFT JOIN TOPICS t ON t.ID=e.TOPIC_ID LEFT JOIN USERS u ON u.ID=e.USER_ID"
-           " WHERE e.FLAG=1")
-    args = []
+           " WHERE e.FLAG=1 AND (t.TEACHER_ID=? OR e.TOPIC_ID IS NULL)")
+    args = [session["user_id"]]
     if kw:
         sql += " AND (t.TOPIC_NAME LIKE ? OR u.REAL_NAME LIKE ? OR u.USER_NO LIKE ?)"
         args += [f"%{kw}%"] * 3
@@ -822,7 +848,7 @@ def teacher_logs():
                            action_names=ACTION_NAMES, status_names=STATUS_NAMES)
 
 
-# ---------------- 系统管理员：用户管理 ----------------
+# ---------------- 系统管理员：用户管理（仅平台账户，不涉及课程） ----------------
 
 @app.route("/admin/users", methods=["GET", "POST"])
 @login_required("admin")
@@ -835,22 +861,34 @@ def admin_users():
         if action == "add":
             name = request.form["user_name"].strip()
             no = request.form["user_no"].strip()
+            role = request.form["role"]
+            advisor = request.form.get("advisor_id") or None
+            if role == "student" and not advisor:
+                flash("登记学生必须选择所属指导教师", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
             if conn.execute("SELECT ID FROM USERS WHERE USER_NAME=? OR USER_NO=?",
                             (name, no)).fetchone():
                 flash("登录名或学号/工号已存在", "error")
             else:
                 conn.execute(
-                    "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-                    " VALUES(?,?,?,?,?,?,?,'active','admin',?,1)",
+                    "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,ADVISOR_ID,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+                    " VALUES(?,?,?,?,?,?,?,?,'active','admin',?,1)",
                     (no, name, generate_password_hash(request.form.get("password") or "123456"),
                      request.form["real_name"].strip(), request.form.get("class_name", "").strip(),
-                     float(request.form.get("gpa", 0) or 0), request.form["role"], ts))
+                     float(request.form.get("gpa", 0) or 0), role, advisor, ts))
                 flash(f"用户 {name} 已创建，初始密码 {request.form.get('password') or '123456'}", "success")
         elif action == "edit":
+            role = request.form["role"]
+            advisor = request.form.get("advisor_id") or None
+            if role == "student" and not advisor:
+                flash("学生必须有所属指导教师", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
             conn.execute(
-                "UPDATE USERS SET REAL_NAME=?,CLASS_NAME=?,GPA=?,ROLE=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
+                "UPDATE USERS SET REAL_NAME=?,CLASS_NAME=?,GPA=?,ROLE=?,ADVISOR_ID=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
                 (request.form["real_name"].strip(), request.form.get("class_name", "").strip(),
-                 float(request.form.get("gpa", 0) or 0), request.form["role"], me, ts,
+                 float(request.form.get("gpa", 0) or 0), role, advisor, me, ts,
                  int(request.form["user_id"])))
             flash("用户信息已更新", "success")
         elif action == "toggle":
@@ -899,8 +937,49 @@ def admin_users():
         args.append(role)
     sql += " ORDER BY ROLE, USER_NO"
     users = conn.execute(sql, args).fetchall()
+    teachers = conn.execute(
+        "SELECT ID, REAL_NAME, USER_NO FROM USERS WHERE ROLE='teacher' AND FLAG=1 AND STATUS='active'"
+    ).fetchall()
+    # 教师ID->姓名映射，用于展示学生所属教师
+    teacher_map = {t["ID"]: t["REAL_NAME"] for t in teachers}
     conn.close()
-    return render_template("admin/users.html", users=users, kw=kw, role=role)
+    return render_template("admin/users.html", users=users, kw=kw, role=role,
+                           teachers=teachers, teacher_map=teacher_map)
+
+
+# ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------
+
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # student-topic-system 目录
+
+
+@app.route("/prototype")
+def prototype_page():
+    """可交互原型（无需登录，方便交叉评估时查看）"""
+    return send_file(os.path.join(PROJECT_ROOT, "prototype", "prototype.html"))
+
+
+@app.route("/home")
+def home_page():
+    """项目介绍主页"""
+    return send_file(os.path.join(PROJECT_ROOT, "website", "index.html"))
+
+
+@app.route("/index.html")
+def home_page_html():
+    """兼容相对链接：网站内互相跳转使用"""
+    return home_page()
+
+
+@app.route("/flow.html")
+def guide_page_html():
+    """兼容相对链接"""
+    return guide_page()
+
+
+@app.route("/guide")
+def guide_page():
+    """图文版使用流程"""
+    return send_file(os.path.join(PROJECT_ROOT, "website", "flow.html"))
 
 
 if __name__ == "__main__":

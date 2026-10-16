@@ -13,11 +13,17 @@
     <input name="real_name" placeholder="姓名" required>
     <input name="class_name" placeholder="班级（学生填）">
     <input name="gpa" type="number" step="0.1" min="0" max="5" value="0" style="width:80px;" title="绩点">
-    <select name="role">
+    <select name="role" id="add-role" onchange="toggleAdvisor('add')">
       <option value="student">学生</option>
       <option value="teacher">教师</option>
       <option value="admin">管理员</option>
     </select>
+    <span id="add-advisor">
+      <select name="advisor_id" title="所属指导教师（学生必填）">
+        <option value="">所属教师*</option>
+        {% for t in teachers %}<option value="{{ t.ID }}">{{ t.REAL_NAME }}（{{ t.USER_NO }}）</option>{% endfor %}
+      </select>
+    </span>
     <input name="password" placeholder="初始密码（默认123456）">
     <button class="btn btn-primary btn-sm" type="submit">保存</button>
   </form>
@@ -34,7 +40,7 @@
   </form>
 
   <table>
-    <thead><tr><th>学号/工号</th><th>登录名</th><th>姓名</th><th>班级</th><th>绩点</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+    <thead><tr><th>学号/工号</th><th>登录名</th><th>姓名</th><th>班级</th><th>绩点</th><th>角色</th><th>所属教师</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>
     {% for u in users %}
       <tr>
@@ -48,11 +54,19 @@
             <input name="real_name" value="{{ u.REAL_NAME }}" required>
             <input name="class_name" value="{{ u.CLASS_NAME or '' }}" placeholder="班级">
             <input name="gpa" type="number" step="0.1" min="0" max="5" value="{{ u.GPA }}" style="width:80px;">
-            <select name="role">
+            <select name="role" class="edit-role" onchange="toggleAdvisor('edit{{ u.ID }}')">
               {% for r, rn in [('student','学生'),('teacher','教师'),('admin','管理员')] %}
               <option value="{{ r }}" {{ 'selected' if u.ROLE==r }}>{{ rn }}</option>
               {% endfor %}
             </select>
+            <span class="edit-advisor" id="edit-advisor-{{ u.ID }}">
+              <select name="advisor_id" title="所属指导教师（学生必填）">
+                <option value="">所属教师*</option>
+                {% for t in teachers %}
+                <option value="{{ t.ID }}" {{ 'selected' if u.ADVISOR_ID==t.ID }}>{{ t.REAL_NAME }}</option>
+                {% endfor %}
+              </select>
+            </span>
             <button class="btn btn-primary btn-sm" type="submit">保存</button>
             <button class="btn btn-default btn-sm" type="button" onclick="this.closest('form').style.display='none';this.closest('tr').querySelector('.td-name').style.display='inline';">取消</button>
           </form>
@@ -60,9 +74,10 @@
         <td>{{ u.CLASS_NAME or '-' }}</td>
         <td>{{ u.GPA }}</td>
         <td>{% if u.ROLE=='admin' %}<span class="tag tag-red">管理员</span>{% elif u.ROLE=='teacher' %}<span class="tag tag-orange">教师</span>{% else %}<span class="tag tag-blue">学生</span>{% endif %}</td>
+        <td>{% if u.ROLE=='student' %}{{ teacher_map.get(u.ADVISOR_ID, '未分配') }}{% else %}-{% endif %}</td>
         <td>{% if u.STATUS=='active' %}<span class="tag tag-green">正常</span>{% else %}<span class="tag tag-red">已停用</span>{% endif %}</td>
         <td>
-          <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';">编辑</button>
+          <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';toggleAdvisor('edit{{ u.ID }}');">编辑</button>
           <form method="post" style="display:inline;" onsubmit="return confirm('{{ '停用' if u.STATUS=='active' else '启用' }}该账号？')">
             <input type="hidden" name="action" value="toggle">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
@@ -83,6 +98,20 @@
     {% endfor %}
     </tbody>
   </table>
-  <p class="flow-tip">权限说明：仅此处登记的用户可以登录；被停用的账号登录时提示"账号已被停用"；初始密码统一 123456，请提醒用户及时修改。</p>
+  <p class="flow-tip">职责说明：管理员仅负责平台账户管理（登记/停用/重置密码/删除），不涉及课程业务；课题发布与选题管理由各教师在自己账号下完成。登记学生时必须选择「所属指导教师」，学生登录后只能看到自己老师的开放课题。</p>
+
+<script>
+function toggleAdvisor(prefix) {
+  var role, advisorSpan;
+  if (prefix === 'add') {
+    role = document.getElementById('add-role').value;
+    advisorSpan = document.getElementById('add-advisor');
+  } else {
+    advisorSpan = document.getElementById('edit-advisor-' + prefix);
+    role = advisorSpan.closest('tr').querySelector('.edit-role').value;
+  }
+  advisorSpan.style.display = role === 'student' ? 'inline' : 'none';
+}
+</script>
 </div>
 {% endblock %}
