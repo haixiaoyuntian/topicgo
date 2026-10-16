@@ -34,6 +34,9 @@
   <div class="main">
     <header class="topbar">
       <div>
+        <a class="top-link" href="{{ url_for('home_page') }}">项目主页</a>
+        <a class="top-link" href="{{ url_for('prototype_page') }}">原型演示</a>
+        <a class="top-link" href="{{ url_for('guide_page') }}">使用流程</a>
         {% if round is defined and round %}
         <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' if round.RULE=='gpa_priority' else '多志愿分配' if round.RULE=='multi_wish' else '随机抽签' }}模式</span>
         {% else %}

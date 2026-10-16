@@ -7,16 +7,17 @@
 """
 import csv
 import io
+import os
 import random
 import sqlite3
 from functools import wraps
 from urllib.parse import quote
 
 from flask import (Flask, flash, redirect, render_template, request,
-                   Response, session, url_for)
+                   Response, send_file, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from db import get_conn, init_db, now_str
+from db import BASE_DIR, get_conn, init_db, now_str
 
 app = Flask(__name__)
 app.secret_key = "topicgo-secret-key"
@@ -451,6 +452,41 @@ def student_public():
     ).fetchall()
     conn.close()
     return render_template("student/public.html", rows=rows)
+
+
+# ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------
+
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # student-topic-system 目录
+
+
+@app.route("/prototype")
+def prototype_page():
+    """可交互原型（无需登录，方便交叉评估时查看）"""
+    return send_file(os.path.join(PROJECT_ROOT, "prototype", "prototype.html"))
+
+
+@app.route("/home")
+def home_page():
+    """项目介绍主页"""
+    return send_file(os.path.join(PROJECT_ROOT, "website", "index.html"))
+
+
+@app.route("/index.html")
+def home_page_html():
+    """兼容相对链接：网站内互相跳转使用"""
+    return home_page()
+
+
+@app.route("/flow.html")
+def guide_page_html():
+    """兼容相对链接"""
+    return guide_page()
+
+
+@app.route("/guide")
+def guide_page():
+    """图文版使用流程"""
+    return send_file(os.path.join(PROJECT_ROOT, "website", "flow.html"))
 
 
 # ---------------- 教师 / 管理员：题库 ----------------

@@ -22,7 +22,7 @@ student-topic-system/
 ├── design/
 │   └── 设计报告.md             # 架构设计 + 数据库设计 + 关键算法 + 接口设计
 ├── src/                        # Flask 系统源码
-│   ├── app.py                  # 应用入口与路由
+│   ├── app.py                  # 应用入口与路由（含 /home /prototype /guide 展示页）
 │   ├── db.py                   # 数据库连接 / 初始化 / 迁移 / 种子数据
 │   ├── schema.sql              # 建表脚本（统一五公共字段）
 │   ├── requirements.txt
@@ -44,6 +44,9 @@ pip install -r requirements.txt
 python app.py
 # 浏览器访问 http://localhost:5000
 ```
+
+在线体验（临时公网地址）：https://building-weeks-give-herein.trycloudflare.com
+（系统内还提供 项目主页 `/home`、原型演示 `/prototype`、使用流程 `/guide`）
 
 演示账号（初始密码均为 `123456`）：
 
