@@ -130,6 +130,22 @@ textarea { border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px 10px; fon
 .class-checkboxes { display: inline-flex; gap: 10px; flex-wrap: wrap; padding: 4px 8px; border: 1px dashed #d9d9d9; border-radius: 4px; font-size: 12px; }
 .class-checkboxes label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 
+/* 通用多选下拉组件 */
+.ms { position: relative; display: inline-block; }
+.ms-toggle { border: 1px solid #d9d9d9; background: #fff; border-radius: 4px; padding: 6px 12px; font-size: 13px; cursor: pointer; min-width: 150px; text-align: left; }
+.ms-toggle:hover { border-color: #40a9ff; }
+.ms-toggle .ms-caret { float: right; color: #999; }
+.ms-panel { display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; background: #fff; border: 1px solid #ebeef5; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 8px 0; min-width: 100%; max-height: 240px; overflow: auto; }
+.ms.open .ms-panel { display: block; }
+.ms-panel label { display: flex; align-items: center; gap: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.ms-panel label:hover { background: #f5f7fa; }
+.ms-actions { display: flex; gap: 8px; padding: 6px 16px 0; border-top: 1px solid #f0f0f0; margin-top: 6px; }
+.ms-actions button { border: none; background: none; color: #1890ff; font-size: 12px; cursor: pointer; padding: 2px 0; }
+.ms-all { font-size: 12px; color: #52c41a; padding: 2px 16px 6px; }
+
+/* 下拉建议（datalist 输入框） */
+.input-select { border: 1px solid #d9d9d9; border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+
 /* 响应式：平板/手机 */
 @media (max-width: 992px) { .quick-links { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 768px) {

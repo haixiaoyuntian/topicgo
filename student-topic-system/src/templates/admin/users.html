@@ -11,7 +11,7 @@
     <input name="user_no" placeholder="学号/工号" required>
     <input name="user_name" placeholder="登录名" required>
     <input name="real_name" placeholder="姓名" required>
-    <input name="class_name" placeholder="班级（学生填）">
+    <input class="input-select" name="class_name" list="class-list" placeholder="班级（学生填，可选择或输入）">
     <input name="gpa" type="number" step="0.1" min="0" max="5" value="0" style="width:80px;" title="绩点">
     <select name="role" id="add-role" onchange="toggleAdvisor('add')">
       <option value="student">学生</option>
@@ -52,7 +52,7 @@
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
             <input name="real_name" value="{{ u.REAL_NAME }}" required>
-            <input name="class_name" value="{{ u.CLASS_NAME or '' }}" placeholder="班级">
+            <input class="input-select" name="class_name" list="class-list" value="{{ u.CLASS_NAME or '' }}" placeholder="班级">
             <input name="gpa" type="number" step="0.1" min="0" max="5" value="{{ u.GPA }}" style="width:80px;">
             <select name="role" class="edit-role" onchange="toggleAdvisor('edit{{ u.ID }}')">
               {% for r, rn in [('student','学生'),('teacher','教师'),('admin','管理员')] %}
@@ -99,6 +99,10 @@
     </tbody>
   </table>
   <p class="flow-tip">职责说明：管理员仅负责平台账户管理（登记/停用/重置密码/删除），不涉及课程业务；课题发布与选题管理由各教师在自己账号下完成。登记学生时必须选择「所属指导教师」，学生登录后只能看到自己老师的开放课题。</p>
+
+<datalist id="class-list">
+  {% for c in class_suggestions %}<option value="{{ c }}">{% endfor %}
+</datalist>
 
 <script>
 function toggleAdvisor(prefix) {

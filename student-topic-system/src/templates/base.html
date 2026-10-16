@@ -56,6 +56,35 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </main>
+<script>
+/* 通用多选下拉：.ms 容器内复选框原样提交，JS 只负责面板显隐与摘要 */
+document.addEventListener('click', function (e) {
+  var toggle = e.target.closest('.ms-toggle');
+  var ms = e.target.closest('.ms');
+  document.querySelectorAll('.ms.open').forEach(function (el) {
+    if (!ms || el !== ms) el.classList.remove('open');
+  });
+  if (toggle && ms) { ms.classList.toggle('open'); e.preventDefault(); return; }
+  if (!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(function (el) { el.classList.remove('open'); });
+});
+document.addEventListener('change', function (e) {
+  if (!e.target.matches('.ms-panel input[type=checkbox]')) return;
+  var ms = e.target.closest('.ms');
+  updateMsSummary(ms);
+});
+function updateMsSummary(ms) {
+  var boxes = ms.querySelectorAll('input[type=checkbox]');
+  var checked = Array.from(boxes).filter(function (b) { return b.checked; });
+  var label = ms.getAttribute('data-all-label') || '不限';
+  var summary = ms.querySelector('.ms-summary');
+  if (summary) {
+    summary.textContent = checked.length === 0 ? label : '已选 ' + checked.length + ' 项';
+  }
+  var hidden = ms.querySelector('input.ms-hidden');
+  if (hidden) hidden.value = checked.map(function (b) { return b.value; }).join(',');
+}
+document.querySelectorAll('.ms').forEach(updateMsSummary);
+</script>
   </div>
 </div>
 </body>

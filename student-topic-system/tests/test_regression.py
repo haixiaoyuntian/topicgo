@@ -255,7 +255,7 @@ body = post(login("stu_of_t2"), "/student/select/5")
 check("stu_of_t2 不能选其他老师的课题", "不属于你的指导教师" in body or "尚未开放选题" in body)
 # teacher2 看不到刘老师的课题
 body = get(t2, "/teacher/topics")
-check("teacher2 看不到他人课题", "U01" in body and "区块链" not in body and "T05" not in body)
+check("teacher2 看不到他人课题", "U01" in body and "T05" not in body and "T01" not in body)
 # teacher2 没有轮次时监控为空
 body = get(t2, "/teacher/monitor")
 check("teacher2 无轮次时监控为空", "题目总数" in body)

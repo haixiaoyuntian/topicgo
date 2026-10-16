@@ -47,8 +47,21 @@
       <input name="max_wish" type="number" min="1" max="5" value="{{ round.MAX_WISH }}"></div>
     <div class="form-item" id="seed-field"><label>抽签种子（随机抽签模式，公开可复现）</label>
       <input name="lottery_seed" value="{{ round.LOTTERY_SEED or '' }}" placeholder="留空则按轮次自动生成；公布后任何人可复现验证"></div>
-    <div class="form-item"><label>分组轮选：允许选题的班级（逗号分隔，留空不限）</label>
-      <input name="allow_classes" value="{{ round.ALLOW_CLASSES or '' }}" placeholder="如：软工2301,软工2302"></div>
+    <div class="form-item"><label>分组轮选：允许选题的班级</label>
+      <div class="ms" data-all-label="不限班级" title="不选=不限班级">
+        <button type="button" class="ms-toggle">允许班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
+        <div class="ms-panel">
+          {% for c in classes %}
+          <label><input type="checkbox" value="{{ c.name }}"
+            {{ 'checked' if round.ALLOW_CLASSES and c.name in (round.ALLOW_CLASSES or '').split(',') }}> {{ c.name }}（{{ c.count }}人）</label>
+          {% endfor %}
+          {% if not classes %}<div class="ms-all">暂无可选班级</div>{% endif %}
+          <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
+        </div>
+        <input type="hidden" class="ms-hidden" name="allow_classes" value="{{ round.ALLOW_CLASSES or '' }}">
+      </div>
+      <p class="flow-tip">不选 = 不限班级（你名下所有学生都可选题）；勾选后本轮仅这些班级可参与。</p>
+    </div>
     <div class="form-item"><label>轮次状态</label>
       <select name="status">
         <option value="open" {{ 'selected' if round.STATUS=='open' }}>开放</option>

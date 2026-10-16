@@ -702,8 +702,11 @@ def teacher_topics():
         "SELECT * FROM TOPICS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
         (session["user_id"],)).fetchall()
     classes = teacher_classes(conn, session["user_id"])
+    tag_suggestions = [r["TAG"] for r in conn.execute(
+        "SELECT DISTINCT TAG FROM TOPICS WHERE TAG IS NOT NULL AND TAG != '' ORDER BY TAG")]
     conn.close()
-    return render_template("teacher/topics.html", topics=topics, classes=classes)
+    return render_template("teacher/topics.html", topics=topics, classes=classes,
+                           tag_suggestions=tag_suggestions)
 
 
 @app.route("/teacher/topics/delete/<int:topic_id>", methods=["POST"])
@@ -759,8 +762,9 @@ def teacher_round():
         conn.close()
         return redirect(url_for("teacher_round"))
     rnd = active_round(conn, session["user_id"]) or own_round(conn)
+    classes = teacher_classes(conn, session["user_id"])
     conn.close()
-    return render_template("teacher/round.html", round=rnd, rule_names=RULE_NAMES)
+    return render_template("teacher/round.html", round=rnd, rule_names=RULE_NAMES, classes=classes)
 
 
 # ---------------- 教师端：监控与策略执行（仅自己的课题） ----------------
@@ -1117,11 +1121,14 @@ def admin_users():
     teachers = conn.execute(
         "SELECT ID, REAL_NAME, USER_NO FROM USERS WHERE ROLE='teacher' AND FLAG=1 AND STATUS='active'"
     ).fetchall()
+    class_suggestions = [r["CLASS_NAME"] for r in conn.execute(
+        "SELECT DISTINCT CLASS_NAME FROM USERS WHERE CLASS_NAME IS NOT NULL AND CLASS_NAME != '' ORDER BY CLASS_NAME")]
     # 教师ID->姓名映射，用于展示学生所属教师
     teacher_map = {t["ID"]: t["REAL_NAME"] for t in teachers}
     conn.close()
     return render_template("admin/users.html", users=users, kw=kw, role=role,
-                           teachers=teachers, teacher_map=teacher_map)
+                           teachers=teachers, teacher_map=teacher_map,
+                           class_suggestions=class_suggestions)
 
 
 # ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------

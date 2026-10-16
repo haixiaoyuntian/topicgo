@@ -30,16 +30,25 @@
     <input type="hidden" name="action" value="add">
     <input name="topic_code" placeholder="编号 T07" required>
     <input name="topic_name" placeholder="题目名称" required style="min-width:220px;">
-    <input name="tag" placeholder="标签">
+    <input class="input-select" name="tag" list="tag-list" placeholder="标签（可选择或输入）">
     <select name="difficulty"><option>较易</option><option selected>中等</option><option>较难</option></select>
     <input name="max_num" type="number" value="4" min="1" style="width:70px;" title="人数上限">
     <input name="topic_desc" placeholder="题目描述" style="min-width:220px;">
-    <span class="class-checkboxes" title="面向班级，不选=所有班级">
-      {% for c in classes %}<label><input type="checkbox" name="target_classes" value="{{ c.name }}"> {{ c.name }}</label>{% endfor %}
-      {% if not classes %}<span class="empty-inline">无可选班级</span>{% endif %}
-    </span>
+    <div class="ms" data-all-label="所有班级" title="面向班级，不选=所有班级">
+      <button type="button" class="ms-toggle">面向班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
+      <div class="ms-panel">
+        {% for c in classes %}
+        <label><input type="checkbox" name="target_classes" value="{{ c.name }}"> {{ c.name }}（{{ c.count }}人）</label>
+        {% endfor %}
+        {% if not classes %}<div class="ms-all">暂无可选班级</div>{% endif %}
+        <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
+      </div>
+    </div>
     <button class="btn btn-primary btn-sm" type="submit">保存</button>
   </form>
+  <datalist id="tag-list">
+    {% for t in tag_suggestions %}<option value="{{ t }}">{% endfor %}
+  </datalist>
 
   <table>
     <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>面向班级</th><th>状态</th><th>操作</th></tr></thead>
@@ -53,18 +62,22 @@
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="topic_id" value="{{ t.ID }}">
             <input name="topic_name" value="{{ t.TOPIC_NAME }}" required>
-            <input name="tag" value="{{ t.TAG or '' }}" placeholder="标签">
+            <input class="input-select" name="tag" list="tag-list" value="{{ t.TAG or '' }}" placeholder="标签">
             <select name="difficulty">
               {% for d in ['较易','中等','较难'] %}<option {{ 'selected' if d==t.DIFFICULTY }}>{{ d }}</option>{% endfor %}
             </select>
             <input name="max_num" type="number" value="{{ t.MAX_NUM }}" min="1" style="width:70px;">
             <input name="topic_desc" value="{{ t.TOPIC_DESC or '' }}" placeholder="描述">
-            <span class="class-checkboxes" title="面向班级，不选=所有班级">
-              {% for c in classes %}
-              <label><input type="checkbox" name="target_classes" value="{{ c.name }}"
-                {{ 'checked' if not t.TARGET_CLASSES or c.name in (t.TARGET_CLASSES or '').split(',') }}> {{ c.name }}</label>
-              {% endfor %}
-            </span>
+            <div class="ms" data-all-label="所有班级" title="面向班级，不选=所有班级">
+              <button type="button" class="ms-toggle">面向班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
+              <div class="ms-panel">
+                {% for c in classes %}
+                <label><input type="checkbox" name="target_classes" value="{{ c.name }}"
+                  {{ 'checked' if not t.TARGET_CLASSES or c.name in (t.TARGET_CLASSES or '').split(',') }}> {{ c.name }}</label>
+                {% endfor %}
+                <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
+              </div>
+            </div>
             <button class="btn btn-primary btn-sm" type="submit">保存</button>
             <button class="btn btn-default btn-sm" type="button" onclick="this.closest('form').style.display='none';this.closest('tr').querySelector('.td-name').style.display='inline';">取消</button>
           </form>

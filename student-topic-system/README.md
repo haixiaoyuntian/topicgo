@@ -30,7 +30,9 @@ student-topic-system/
 │   └── templates/              # 登录 / 学生端 5 页 / 教师端 7 页 / 管理员 1 页
 ├── tests/
 │   ├── test_concurrent_select.py  # 并发选题防超卖测试
-│   └── test_regression.py         # 全功能回归测试（30 项断言）
+│   ├── test_regression.py         # 全功能回归测试（53 项断言）
+│   ├── test_e2e_multi_user.py     # 多用户协同 E2E 测试（22 项断言）
+│   └── demo_seed.py               # 演示数据生成（多人同时登录测试）
 └── website/
     ├── index.html              # 项目介绍网页（Gitee Pages 发布）
     └── flow.html               # 图文版使用流程引导页（学生/教师双视角）
@@ -80,7 +82,11 @@ python app.py
 ```bash
 # 先启动服务，再运行测试
 python tests/test_concurrent_select.py   # 并发防超卖
-python tests/test_regression.py          # 全功能回归（30 项断言）
+python tests/test_regression.py          # 全功能回归（53 项断言）
+python tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
+
+# 生成多人测试演示数据（2教师+12学生+课题+公告），打印账号清单
+python tests/demo_seed.py
 ```
 
 ## 团队
