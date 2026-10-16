@@ -29,6 +29,7 @@ student-topic-system/
 │   ├── static/style.css
 │   └── templates/              # 登录 / 学生端 5 页 / 教师端 7 页 / 管理员 1 页
 ├── tests/
+│   ├── 自测说明.md               # 自测指南（如何自己运行测试）
 │   ├── test_concurrent_select.py  # 并发选题防超卖测试
 │   ├── test_regression.py         # 全功能回归测试（53 项断言）
 │   ├── test_e2e_multi_user.py     # 多用户协同 E2E 测试（22 项断言）
@@ -80,13 +81,13 @@ python app.py
 ## 测试
 
 ```bash
-# 先启动服务，再运行测试
-python tests/test_concurrent_select.py   # 并发防超卖
-python tests/test_regression.py          # 全功能回归（53 项断言）
-python tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
+# 先启动服务（cd src && python app.py），再在 src 目录下运行测试
+python ../tests/test_concurrent_select.py   # 并发防超卖
+python ../tests/test_regression.py          # 全功能回归（53 项断言）
+python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
+python ../tests/demo_seed.py                # 生成多人演示账号
 
-# 生成多人测试演示数据（2教师+12学生+课题+公告），打印账号清单
-python tests/demo_seed.py
+# 详细的自己动手测试指南见 tests/自测说明.md
 ```
 
 ## 团队

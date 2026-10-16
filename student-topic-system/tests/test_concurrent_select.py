@@ -9,22 +9,27 @@ from werkzeug.security import generate_password_hash
 BASE = "http://127.0.0.1:5000"
 DB = "topicgo.db"
 
-# 1. 造 6 个测试学生
+# 1. 造 6 个测试学生（必须绑定指导教师，否则看不到课题）
 conn = sqlite3.connect(DB)
+teacher_id = conn.execute("SELECT ID FROM USERS WHERE USER_NAME='teacher'").fetchone()[0]
 for i in range(1, 7):
     no, name = f"TEST{i:02d}", f"test{i}"
     if not conn.execute("SELECT 1 FROM USERS WHERE USER_NAME=?", (name,)).fetchone():
         conn.execute(
-            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES(?,?,?,?,?,3.0,'student','test',?,1)",
-            (no, name, generate_password_hash("123456"), f"测试{i}", "软工TEST", "2026-01-01 00:00:00"),
+            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,ADVISOR_ID,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES(?,?,?,?,'软工TEST',3.0,'student',?,'active','test',?,1)",
+            (no, name, generate_password_hash("123456"), f"测试{i}", teacher_id, "2026-01-01 00:00:00"),
         )
+    else:
+        # 兼容历史数据：确保已绑导师
+        conn.execute("UPDATE USERS SET ADVISOR_ID=? WHERE USER_NAME=?", (teacher_id, name))
 conn.commit()
 
 # 找到 T03 题目 ID
 topic_id = conn.execute("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T03'").fetchone()[0]
-# 重置 T03 选题记录，并把轮次窗口调整为覆盖当前时间
+# 重置 T03 选题记录，并清空测试学生在其它题目上的选题（保证限选1题不干扰）
 conn.execute("DELETE FROM SELECTIONS WHERE TOPIC_ID=?", (topic_id,))
+conn.execute("DELETE FROM SELECTIONS WHERE USER_ID IN (SELECT ID FROM USERS WHERE USER_NAME LIKE 'test%')")
 conn.execute("UPDATE ROUNDS SET START_AT='2020-01-01 00:00:00', END_AT='2030-01-01 00:00:00'")
 conn.commit()
 max_num = conn.execute("SELECT MAX_NUM FROM TOPICS WHERE ID=?", (topic_id,)).fetchone()[0]
