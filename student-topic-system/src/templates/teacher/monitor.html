@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}选题监控 - 学生选题系统{% endblock %}
 {% block content %}
+<details class="help-panel">
+  <summary>📖 选题监控操作说明（点击展开）</summary>
+  <div class="help-body">
+    <p><b>实时监控：</b>查看每个课题的已确认/剩余名额、候补人数、待分配人数；「待分配/待抽签」卡片提示你需要执行的操作。</p>
+    <p><b>多志愿模式：</b>学生提交志愿后，点「执行志愿分配」统一分配（按志愿顺序+绩点优先），分配动作全部写日志、不可撤销。</p>
+    <p><b>随机抽签模式：</b>学生报名后，点「执行公开抽签」，种子已按轮次设置生成并向全班公布，结果可复现验证。</p>
+    <p><b>候补递补：</b>自动递补模式下学生退选立即递补；手动模式下在「候补名单」中点「递补」按钮操作。</p>
+    <p><b>导出存档：</b>点「导出 CSV」下载自己课题的选题结果（含候补信息），用于存档上报。</p>
+    <p><b>注意：</b>本页只统计你发布的课题和你名下的学生。</p>
+  </div>
+</details>
 <div class="stat-cards">
   <div class="stat-card"><div class="num">{{ rows|length }}</div><div class="label">题目总数</div></div>
   <div class="stat-card"><div class="num">{{ total_picked }}</div><div class="label">已确认人数</div></div>

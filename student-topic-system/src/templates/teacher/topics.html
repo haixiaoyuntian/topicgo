@@ -1,10 +1,30 @@
 {% extends "base.html" %}
 {% block title %}题库维护 - 学生选题系统{% endblock %}
 {% block content %}
+<div class="page-head">
+  <div>
+    <h2>🗂 题库维护</h2>
+    <p class="page-sub">你管理的班级：{% for c in classes %}<span class="class-chip">{{ c.name }}（{{ c.count }}人）</span>{% else %}<span class="empty-inline">暂无学生，请联系管理员分配</span>{% endfor %}</p>
+  </div>
+</div>
+
 <div class="card">
-  <h3>题库维护
+  <h3>我的课题
     <button class="btn btn-primary btn-sm" style="float:right;" onclick="document.getElementById('add-form').style.display='block'">+ 新增题目</button>
   </h3>
+
+  <details class="help-panel">
+    <summary>📖 教师发布课题使用说明</summary>
+    <div class="help-body">
+      <p><b>1. 发布课题：</b>点击右上角「+ 新增题目」，填写编号、名称、标签、难度、人数上限；</p>
+      <p><b>2. 选择面向班级（关键）：</b>勾选该课题面向哪些班级开放——
+         不勾选 = 面向你名下<b>所有班级</b>；勾选后仅这些班级的学生能看到并选择该课题；</p>
+      <p><b>3. 编辑/删除：</b>点「编辑」可修改全部信息；已有选题记录的题目不能删除，只能关闭；</p>
+      <p><b>4. 开放选题：</b>课题发布后学生仍看不到，需到「选题轮次」设置策略并开启轮次，
+         且课题状态为「开放」、处于轮次时间窗口内，学生才可见；</p>
+      <p><b>5. 状态说明：</b>「开放」=参与本轮选题；「关闭」=暂时下架（学生不可见）。</p>
+    </div>
+  </details>
 
   <form id="add-form" method="post" class="inline-form" style="display:none;">
     <input type="hidden" name="action" value="add">
@@ -14,11 +34,15 @@
     <select name="difficulty"><option>较易</option><option selected>中等</option><option>较难</option></select>
     <input name="max_num" type="number" value="4" min="1" style="width:70px;" title="人数上限">
     <input name="topic_desc" placeholder="题目描述" style="min-width:220px;">
+    <span class="class-checkboxes" title="面向班级，不选=所有班级">
+      {% for c in classes %}<label><input type="checkbox" name="target_classes" value="{{ c.name }}"> {{ c.name }}</label>{% endfor %}
+      {% if not classes %}<span class="empty-inline">无可选班级</span>{% endif %}
+    </span>
     <button class="btn btn-primary btn-sm" type="submit">保存</button>
   </form>
 
   <table>
-    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>状态</th><th>操作</th></tr></thead>
+    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>面向班级</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>
     {% for t in topics %}
       <tr>
@@ -35,6 +59,12 @@
             </select>
             <input name="max_num" type="number" value="{{ t.MAX_NUM }}" min="1" style="width:70px;">
             <input name="topic_desc" value="{{ t.TOPIC_DESC or '' }}" placeholder="描述">
+            <span class="class-checkboxes" title="面向班级，不选=所有班级">
+              {% for c in classes %}
+              <label><input type="checkbox" name="target_classes" value="{{ c.name }}"
+                {{ 'checked' if not t.TARGET_CLASSES or c.name in (t.TARGET_CLASSES or '').split(',') }}> {{ c.name }}</label>
+              {% endfor %}
+            </span>
             <button class="btn btn-primary btn-sm" type="submit">保存</button>
             <button class="btn btn-default btn-sm" type="button" onclick="this.closest('form').style.display='none';this.closest('tr').querySelector('.td-name').style.display='inline';">取消</button>
           </form>
@@ -42,6 +72,10 @@
         <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
         <td>{{ t.DIFFICULTY }}</td>
         <td>{{ t.MAX_NUM }}</td>
+        <td>
+          {% if not t.TARGET_CLASSES %}<span class="tag tag-green">所有班级</span>
+          {% else %}{% for c in t.TARGET_CLASSES.split(',') %}<span class="tag tag-blue">{{ c }}</span> {% endfor %}{% endif %}
+        </td>
         <td>{% if t.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
         <td>
           <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';">编辑</button>
@@ -53,7 +87,7 @@
       </tr>
     {% endfor %}
     {% if not topics %}
-      <tr><td colspan="6" style="border:none;">
+      <tr><td colspan="8" style="border:none;">
         <div class="empty-guide" style="box-shadow:none;padding:32px;">
           <div class="empty-icon">🗂</div>
           <p>你还没有发布课题</p>

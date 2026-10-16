@@ -9,6 +9,26 @@
 {% endif %}
 
 <div class="card">
+  <details class="help-panel" style="margin-bottom:0;">
+    <summary>📖 {{ '志愿填报' if round and round.RULE=='multi_wish' else '抽签报名' }}使用说明</summary>
+    <div class="help-body">
+      {% if round and round.RULE=='multi_wish' %}
+      <p><b>① 勾选题目</b>：在下方列表中勾选你想去的课题（每人最多 {{ round.MAX_WISH }} 个）；</p>
+      <p><b>② 设置志愿序号</b>：在「志愿序号」列填写优先级，1 = 最想去，数字越小优先级越高；</p>
+      <p><b>③ 提交等待分配</b>：老师端会统一执行分配：按志愿顺序依次处理，同志愿超员时按绩点优先；</p>
+      <p><b>④ 分配结果</b>：命中即「已确认」；未命中任何志愿转第一志愿「候补中」；其余志愿自动作废（有记录）；</p>
+      <p><b>注意</b>：每人只能提交一次，提交后如需修改请联系老师。</p>
+      {% else %}
+      <p><b>① 报名不限名额</b>：勾选想参加的课题即可报名，报名阶段不占用名额；</p>
+      <p><b>② 等待老师抽签</b>：老师会用公开的随机种子统一抽签，中签即「已确认」，未中签按顺序进「候补」；</p>
+      <p><b>③ 公平可验证</b>：种子会向全员公布，任何人都能用该种子复现验证抽签结果；</p>
+      <p><b>注意</b>：每人只能报名一次，提交后如需修改请联系老师。</p>
+      {% endif %}
+    </div>
+  </details>
+</div>
+
+<div class="card">
   <h3>{{ '志愿填报' if round and round.RULE=='multi_wish' else '抽签报名' }}</h3>
   {% if mine %}
     <p class="empty">你已提交{{ '志愿' if round and round.RULE=='multi_wish' else '报名' }}，等待教师执行{{ '分配' if round and round.RULE=='multi_wish' else '抽签' }}。如需修改请联系教师。</p>

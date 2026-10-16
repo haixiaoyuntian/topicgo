@@ -38,6 +38,24 @@
 </div>
 {% endif %}
 
+<!-- 我管理的班级 -->
+<div class="card">
+  <h3>🏫 我管理的班级</h3>
+  {% if classes %}
+  <div class="class-summary">
+    {% for c in classes %}
+    <div class="class-box">
+      <div class="class-name">{{ c.name }}</div>
+      <div class="class-count">{{ c.count }} 名学生</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="flow-tip">发布课题时可按班级设置「面向班级」，只有对应班级的学生能看到；不设置则面向以上所有班级。</p>
+  {% else %}
+  <p class="empty-inline">你名下还没有学生，请联系管理员在「用户管理」中把学生分配给你。</p>
+  {% endif %}
+</div>
+
 <!-- 数据概览 -->
 <div class="stat-cards">
   <div class="stat-card"><div class="num">{{ topics|length }}</div><div class="label">我发布的课题</div></div>

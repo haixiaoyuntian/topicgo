@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS TOPICS (
     DIFFICULTY     TEXT DEFAULT '中等',                -- 较易/中等/较难
     MAX_NUM        INTEGER NOT NULL DEFAULT 4,        -- 人数上限
     TEACHER_ID     INTEGER,
+    TARGET_CLASSES TEXT,                              -- 面向班级（逗号分隔，空=教师名下所有班级）
     STATUS         TEXT DEFAULT 'open',               -- open / closed
     CREATED_BY     TEXT,
     CREATED_AT     TEXT,

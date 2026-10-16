@@ -4,7 +4,9 @@
 <div class="page-head">
   <div>
     <h2>👨‍🎓 我的学生</h2>
-    <p class="page-sub">共 {{ rows|length }} 名学生{% if round %}｜轮次：{{ round.ROUND_NAME }}{% endif %}</p>
+    <p class="page-sub">共 {{ rows|length }} 名学生{% if round %}｜轮次：{{ round.ROUND_NAME }}{% endif %}
+      {% for c in classes %}<span class="class-chip">{{ c.name }}（{{ c.count }}人）</span>{% endfor %}
+    </p>
   </div>
 </div>
 

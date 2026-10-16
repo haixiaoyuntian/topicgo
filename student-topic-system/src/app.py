@@ -148,6 +148,25 @@ def own_round(conn):
     return rnd
 
 
+def teacher_classes(conn, teacher_id):
+    """教师管理的班级（由其名下学生的班级派生，含人数）"""
+    rows = conn.execute(
+        "SELECT CLASS_NAME, COUNT(*) c FROM USERS"
+        " WHERE ROLE='student' AND ADVISOR_ID=? AND FLAG=1 AND STATUS='active'"
+        " AND CLASS_NAME IS NOT NULL AND CLASS_NAME != ''"
+        " GROUP BY CLASS_NAME ORDER BY CLASS_NAME",
+        (teacher_id,)).fetchall()
+    return [dict(name=r["CLASS_NAME"], count=r["c"]) for r in rows]
+
+
+def topic_visible(topic, class_name):
+    """课题是否对该班级可见：TARGET_CLASSES 为空=面向教师名下所有班级"""
+    if not topic["TARGET_CLASSES"]:
+        return True
+    allowed = [c.strip() for c in topic["TARGET_CLASSES"].split(",") if c.strip()]
+    return class_name in allowed
+
+
 # ---------------- 认证 ----------------
 
 @app.route("/")
@@ -251,6 +270,8 @@ def student_browse():
         sql += " AND DIFFICULTY=?"
         args.append(diff)
     topics = conn.execute(sql + " ORDER BY TOPIC_CODE", args).fetchall() if advisor else []
+    # 按课题面向班级二次过滤（TARGET_CLASSES）
+    topics = [t for t in topics if topic_visible(t, user["CLASS_NAME"])]
     stats = topic_stats(conn, rnd["ID"]) if rnd else {}
     wishes = topic_stats(conn, rnd["ID"], "wish") if rnd else {}
     entries = topic_stats(conn, rnd["ID"], "entry") if rnd else {}
@@ -301,12 +322,16 @@ def student_select(topic_id):
             flash(f"绩点优先模式下，还有 {higher} 位绩点高于你的同学未选题，请稍候", "error")
             conn.close()
             return redirect(url_for("student_browse"))
-    # 只能选自己老师发布的课题
+    # 只能选自己老师发布的、且面向自己班级的课题
     topic = conn.execute(
         "SELECT * FROM TOPICS WHERE ID=? AND STATUS='open' AND FLAG=1 AND TEACHER_ID=?",
         (topic_id, user["ADVISOR_ID"])).fetchone()
     if not topic:
         flash("题目不存在、已关闭或不属于你的指导教师", "error")
+        conn.close()
+        return redirect(url_for("student_browse"))
+    if not topic_visible(topic, user["CLASS_NAME"]):
+        flash("该题目未面向你的班级开放", "error")
         conn.close()
         return redirect(url_for("student_browse"))
 
@@ -372,6 +397,7 @@ def student_wish():
     topics = conn.execute(
         "SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
         (user["ADVISOR_ID"],)).fetchall()
+    topics = [t for t in topics if topic_visible(t, user["CLASS_NAME"])]
 
     if request.method == "POST":
         existing = user_active_selection(conn, rnd["ID"], user["ID"])
@@ -396,7 +422,7 @@ def student_wish():
                 topic = conn.execute(
                     "SELECT * FROM TOPICS WHERE TOPIC_CODE=? AND STATUS='open' AND TEACHER_ID=?",
                     (code, user["ADVISOR_ID"])).fetchone()
-                if not topic:
+                if not topic or not topic_visible(topic, user["CLASS_NAME"]):
                     continue
                 if rnd["RULE"] == "lottery":
                     conn.execute(
@@ -555,11 +581,12 @@ def teacher_index():
             " WHERE s.ROUND_ID=? AND s.STATUS='waiting' AND t.TEACHER_ID=?",
             (rnd["ID"], session["user_id"])).fetchone()["c"]
     picked_students = sum(1 for s in students if s["ID"] in sel_map and sel_map[s["ID"]]["STATUS"] == "confirmed")
+    classes = teacher_classes(conn, session["user_id"])
     conn.close()
     return render_template("teacher/index.html", round=rnd, topics=topics, students=students,
                            sel_map=sel_map, todo_wish=todo_wish, todo_entry=todo_entry,
                            todo_wait=todo_wait, picked_students=picked_students,
-                           rule_names=RULE_NAMES)
+                           rule_names=RULE_NAMES, classes=classes)
 
 
 # ---------------- 教师端：我的学生（选题进度一览） ----------------
@@ -593,9 +620,10 @@ def teacher_students():
                          status=sel["STATUS"] if sel else "none"))
     if status_filter:
         rows = [r for r in rows if r["status"] == status_filter]
+    classes = teacher_classes(conn, session["user_id"])
     conn.close()
     return render_template("teacher/students.html", rows=rows, round=rnd, kw=kw,
-                           status_filter=status_filter)
+                           status_filter=status_filter, classes=classes)
 
 
 # ---------------- 教师端：公告管理 ----------------
@@ -645,12 +673,13 @@ def teacher_topics():
             if conn.execute("SELECT ID FROM TOPICS WHERE TOPIC_CODE=?", (code,)).fetchone():
                 flash("题目编号已存在", "error")
             else:
+                target = ",".join(request.form.getlist("target_classes"))
                 conn.execute(
-                    "INSERT INTO TOPICS(TOPIC_CODE,TOPIC_NAME,TOPIC_DESC,TAG,DIFFICULTY,MAX_NUM,TEACHER_ID,CREATED_BY,CREATED_AT,FLAG)"
-                    " VALUES(?,?,?,?,?,?,?,'teacher',?,1)",
+                    "INSERT INTO TOPICS(TOPIC_CODE,TOPIC_NAME,TOPIC_DESC,TAG,DIFFICULTY,MAX_NUM,TEACHER_ID,TARGET_CLASSES,CREATED_BY,CREATED_AT,FLAG)"
+                    " VALUES(?,?,?,?,?,?,?,?,'teacher',?,1)",
                     (code, request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
-                     int(request.form.get("max_num", 4)), session["user_id"], ts))
+                     int(request.form.get("max_num", 4)), session["user_id"], target, ts))
                 flash("题目已创建", "success")
         elif action == "edit":
             # 仅能修改自己的课题
@@ -659,11 +688,12 @@ def teacher_topics():
             if not own:
                 flash("无权修改他人课题", "error")
             else:
+                target = ",".join(request.form.getlist("target_classes"))
                 conn.execute(
-                    "UPDATE TOPICS SET TOPIC_NAME=?,TOPIC_DESC=?,TAG=?,DIFFICULTY=?,MAX_NUM=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
+                    "UPDATE TOPICS SET TOPIC_NAME=?,TOPIC_DESC=?,TAG=?,DIFFICULTY=?,MAX_NUM=?,TARGET_CLASSES=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
                     (request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
-                     int(request.form.get("max_num", 4)), me, ts, int(request.form["topic_id"])))
+                     int(request.form.get("max_num", 4)), target, me, ts, int(request.form["topic_id"])))
                 flash("题目已更新", "success")
         conn.commit()
         conn.close()
@@ -671,8 +701,9 @@ def teacher_topics():
     topics = conn.execute(
         "SELECT * FROM TOPICS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
         (session["user_id"],)).fetchall()
+    classes = teacher_classes(conn, session["user_id"])
     conn.close()
-    return render_template("teacher/topics.html", topics=topics)
+    return render_template("teacher/topics.html", topics=topics, classes=classes)
 
 
 @app.route("/teacher/topics/delete/<int:topic_id>", methods=["POST"])

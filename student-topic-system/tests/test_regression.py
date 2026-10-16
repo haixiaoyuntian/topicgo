@@ -287,6 +287,35 @@ check("学生首页看到老师公告", "本周五截止选题" in body)
 body = get(login("stu_of_t2"), "/student/index")
 check("非本老师学生看不到公告", "本周五截止选题" not in body)
 
+# ---------- 12. 课题面向班级 ----------
+print("\n== 12. 课题面向班级 ==")
+reset_round()
+tea = login("teacher")
+# 发布仅面向软工2302的课题
+post(tea, "/teacher/topics", data={"action": "add", "topic_code": "C01", "topic_name": "仅2302的课题",
+                                   "tag": "测试", "difficulty": "中等", "max_num": "2",
+                                   "target_classes": ["软工2302"]})
+# 发布面向所有班级的课题
+post(tea, "/teacher/topics", data={"action": "add", "topic_code": "C02", "topic_name": "所有班级的课题",
+                                   "tag": "测试", "difficulty": "中等", "max_num": "2"})
+c1 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='C01'")[0]["ID"]
+c2 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='C02'")[0]["ID"]
+body_z = get(login("zhangsan"), "/student/browse")   # 软工2301
+body_w = get(login("wangwu"), "/student/browse")     # 软工2302
+check("2301学生看不到仅面向2302的课题", "仅2302的课题" not in body_z)
+check("2302学生看得到面向2302的课题", "仅2302的课题" in body_w)
+check("所有班级课题对2301可见", "所有班级的课题" in body_z)
+body = post(login("zhangsan"), f"/student/select/{c1}")
+check("越班选题被拒绝", "未面向你的班级开放" in body)
+body = post(login("wangwu"), f"/student/select/{c1}")
+check("同班选题成功", "成功" in body)
+# 教师首页展示管理的班级
+body = get(tea, "/teacher/index")
+check("教师首页显示管理的班级", "软工2301" in body and "软工2302" in body)
+# 题库页显示面向班级列
+body = get(tea, "/teacher/topics")
+check("题库页显示面向班级", "面向班级" in body and "软工2302" in body)
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:
