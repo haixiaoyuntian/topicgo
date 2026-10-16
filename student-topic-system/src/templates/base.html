@@ -11,15 +11,19 @@
     <div class="logo">Topic<span>Go</span><br><small>学生选题系统</small></div>
     {% if session.role == 'student' %}
     <div class="menu-group">学生功能</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_index' }}" href="{{ url_for('student_index') }}">🏠 首页</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_browse' }}" href="{{ url_for('student_browse') }}">📋 浏览题库</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_wish' }}" href="{{ url_for('student_wish') }}">📝 志愿填报</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_mine' }}" href="{{ url_for('student_mine') }}">✅ 我的选题</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_public' }}" href="{{ url_for('student_public') }}">📢 结果公示</a>
     {% elif session.role == 'teacher' %}
     <div class="menu-group">教师功能</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_index' }}" href="{{ url_for('teacher_index') }}">🏠 首页</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_students' }}" href="{{ url_for('teacher_students') }}">👨‍🎓 我的学生</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_announce' }}" href="{{ url_for('teacher_announce') }}">📣 公告管理</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_logs' }}" href="{{ url_for('teacher_logs') }}">🧾 操作日志</a>
     {% else %}
     <div class="menu-group">系统管理</div>

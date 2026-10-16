@@ -72,3 +72,62 @@ tr:hover td { background: #fafcff; }
 .login-box h2 { text-align: center; }
 .login-box .sub { text-align: center; color: #999; font-size: 13px; margin: 6px 0 22px; }
 .login-box .tip { text-align: center; font-size: 12px; color: #aaa; margin-top: 14px; }
+
+/* ========== Dashboard 首页 ========== */
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+.page-head h2 { font-size: 22px; }
+.page-sub { font-size: 13px; color: #888; margin-top: 4px; }
+
+/* 待办卡片 */
+.todo-card { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-left: 4px solid #fa8c16; flex-wrap: wrap; }
+.todo-card.todo-done { border-left-color: #52c41a; }
+.todo-main { display: flex; gap: 14px; align-items: center; }
+.todo-icon { font-size: 34px; }
+.todo-card h3 { font-size: 16px; margin-bottom: 4px; }
+.todo-card p { font-size: 13px; color: #666; }
+.todo-pill { display: inline-block; background: #fff7e6; border: 1px solid #ffd591; color: #ad6800; font-size: 12px; border-radius: 12px; padding: 2px 12px; margin-right: 8px; }
+.todo-actions { display: flex; gap: 10px; }
+
+/* 空状态引导 */
+.empty-guide { background: #fff; border-radius: 10px; padding: 48px 24px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.empty-icon { font-size: 46px; margin-bottom: 12px; }
+.empty-guide p { font-size: 15px; color: #555; }
+.empty-sub { font-size: 13px; color: #999; margin-top: 6px; }
+.empty-inline { color: #999; font-size: 13px; padding: 12px 0; }
+
+/* 公告列表 */
+.ann-list { display: flex; flex-direction: column; gap: 12px; }
+.ann-item { border: 1px solid #ebeef5; border-radius: 8px; padding: 12px 16px; background: #fafcff; }
+.ann-title { font-size: 14px; font-weight: 600; }
+.ann-meta { font-size: 12px; color: #999; margin: 4px 0; }
+.ann-content { font-size: 13px; color: #555; }
+
+/* 快捷入口 */
+.quick-links { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin: 16px 0 30px; }
+.quick-link { background: #fff; border-radius: 10px; padding: 18px 8px; text-align: center; font-size: 26px; box-shadow: 0 1px 4px rgba(0,0,0,.06); transition: .2s; }
+.quick-link span { display: block; font-size: 13px; color: #555; margin-top: 6px; }
+.quick-link:hover { box-shadow: 0 6px 16px rgba(24,144,255,.15); transform: translateY(-3px); }
+
+/* 表格行警示 */
+.row-warn td { background: #fff1f0; }
+.row-warn:hover td { background: #ffe7e6; }
+
+textarea { border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px 10px; font-size: 14px; font-family: inherit; resize: vertical; }
+
+/* 响应式：平板/手机 */
+@media (max-width: 992px) { .quick-links { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; display: flex; flex-wrap: wrap; padding-bottom: 8px; }
+  .logo { width: 100%; }
+  .menu-group { width: 100%; padding: 8px 16px 2px; }
+  .menu-item { padding: 10px 16px; }
+  .quick-links { grid-template-columns: repeat(2, 1fr); }
+  .stat-cards { flex-wrap: wrap; }
+  .stat-card { min-width: 45%; }
+  .content { padding: 14px; }
+  .topbar { padding: 0 14px; flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 8px; gap: 6px; }
+  .todo-card { flex-direction: column; align-items: flex-start; }
+  table { font-size: 12px; }
+  th, td { padding: 6px 6px; }
+}

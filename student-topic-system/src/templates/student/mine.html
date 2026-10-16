@@ -33,7 +33,12 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty">暂无有效选题记录。请前往「浏览题库」选题，或「志愿填报」提交志愿。</p>
+  <div class="empty-guide" style="box-shadow:none;padding:32px;">
+    <div class="empty-icon">📝</div>
+    <p>暂无有效选题记录</p>
+    <p class="empty-sub">请前往「浏览题库」选题，或按老师要求「志愿填报」</p>
+    <a class="btn btn-primary" style="margin-top:12px;" href="{{ url_for('student_browse') }}">去浏览题库</a>
+  </div>
   {% endif %}
 </div>
 
@@ -56,7 +61,7 @@
   </table>
   <p class="flow-tip">退选记录永久保留，教师可在「操作日志」中核查每一次选题与退选动作。</p>
   {% else %}
-  <p class="empty">暂无退选记录。</p>
+  <p class="empty-inline">暂无退选记录。</p>
   {% endif %}
 </div>
 {% endblock %}

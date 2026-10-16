@@ -155,10 +155,44 @@ def index():
     if "user_id" not in session:
         return redirect(url_for("login"))
     if session["role"] == "student":
-        return redirect(url_for("student_browse"))
+        return redirect(url_for("student_index"))
     if session["role"] == "teacher":
-        return redirect(url_for("teacher_monitor"))
+        return redirect(url_for("teacher_index"))
     return redirect(url_for("admin_users"))
+
+
+# ---------------- 学生端：首页（Dashboard） ----------------
+
+@app.route("/student/index")
+@login_required("student")
+def student_index():
+    conn = get_conn()
+    user = current_user(conn)
+    advisor = conn.execute("SELECT * FROM USERS WHERE ID=?", (user["ADVISOR_ID"],)).fetchone() \
+        if user["ADVISOR_ID"] else None
+    rnd = active_round(conn, user["ADVISOR_ID"])
+    mine = user_active_selection(conn, rnd["ID"], session["user_id"]) if rnd else []
+    confirmed = next((m for m in mine if m["STATUS"] == "confirmed"), None)
+    waiting = next((m for m in mine if m["STATUS"] == "waiting"), None)
+    wishes = [m for m in mine if m["STATUS"] in ("wish", "entry")]
+    topic_total = topic_confirmed = 0
+    if advisor:
+        topic_total = conn.execute(
+            "SELECT COUNT(*) c FROM TOPICS WHERE TEACHER_ID=? AND STATUS='open' AND FLAG=1",
+            (user["ADVISOR_ID"],)).fetchone()["c"]
+        topic_confirmed = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE t.TEACHER_ID=? AND s.STATUS='confirmed' AND s.ROUND_ID=?",
+            (user["ADVISOR_ID"], rnd["ID"] if rnd else 0)).fetchone()["c"]
+    announcements = conn.execute(
+        "SELECT * FROM ANNOUNCEMENTS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY PUBLISHED_AT DESC LIMIT 5",
+        (user["ADVISOR_ID"],)).fetchall() if advisor else []
+    conn.close()
+    return render_template("student/index.html", user=user, advisor=advisor, round=rnd,
+                           confirmed=confirmed, waiting=waiting, wishes=wishes,
+                           topic_total=topic_total, topic_confirmed=topic_confirmed,
+                           announcements=announcements,
+                           rule_name=RULE_NAMES.get(rnd["RULE"] if rnd else "", ""))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -482,6 +516,118 @@ def student_public():
     ).fetchall()
     conn.close()
     return render_template("student/public.html", rows=rows)
+
+
+# ---------------- 教师端：首页（Dashboard） ----------------
+
+@app.route("/teacher/index")
+@login_required("teacher")
+def teacher_index():
+    conn = get_conn()
+    rnd = active_round(conn, session["user_id"]) or own_round(conn)
+    topics = conn.execute(
+        "SELECT * FROM TOPICS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY TOPIC_CODE",
+        (session["user_id"],)).fetchall()
+    students = conn.execute(
+        "SELECT * FROM USERS WHERE ROLE='student' AND ADVISOR_ID=? AND FLAG=1 AND STATUS='active'",
+        (session["user_id"],)).fetchall()
+    # 每个学生的选题状态
+    sel_map = {}
+    if rnd:
+        for r in conn.execute(
+                "SELECT s.USER_ID, s.STATUS, s.WISH_NO, s.QUEUE_NO, t.TOPIC_NAME FROM SELECTIONS s"
+                " JOIN TOPICS t ON t.ID=s.TOPIC_ID WHERE s.ROUND_ID=? AND s.STATUS IN('confirmed','waiting','wish','entry')",
+                (rnd["ID"],)).fetchall():
+            sel_map[r["USER_ID"]] = r
+    # 待办统计
+    todo_wish = todo_entry = todo_wait = 0
+    if rnd:
+        todo_wish = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE s.ROUND_ID=? AND s.STATUS='wish' AND t.TEACHER_ID=?",
+            (rnd["ID"], session["user_id"])).fetchone()["c"]
+        todo_entry = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE s.ROUND_ID=? AND s.STATUS='entry' AND t.TEACHER_ID=?",
+            (rnd["ID"], session["user_id"])).fetchone()["c"]
+        todo_wait = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE s.ROUND_ID=? AND s.STATUS='waiting' AND t.TEACHER_ID=?",
+            (rnd["ID"], session["user_id"])).fetchone()["c"]
+    picked_students = sum(1 for s in students if s["ID"] in sel_map and sel_map[s["ID"]]["STATUS"] == "confirmed")
+    conn.close()
+    return render_template("teacher/index.html", round=rnd, topics=topics, students=students,
+                           sel_map=sel_map, todo_wish=todo_wish, todo_entry=todo_entry,
+                           todo_wait=todo_wait, picked_students=picked_students,
+                           rule_names=RULE_NAMES)
+
+
+# ---------------- 教师端：我的学生（选题进度一览） ----------------
+
+@app.route("/teacher/students")
+@login_required("teacher")
+def teacher_students():
+    conn = get_conn()
+    rnd = active_round(conn, session["user_id"]) or own_round(conn)
+    kw = request.args.get("kw", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    sql = ("SELECT * FROM USERS WHERE ROLE='student' AND ADVISOR_ID=? AND FLAG=1")
+    args = [session["user_id"]]
+    if kw:
+        sql += " AND (USER_NAME LIKE ? OR USER_NO LIKE ? OR REAL_NAME LIKE ?)"
+        args += [f"%{kw}%"] * 3
+    sql += " ORDER BY CLASS_NAME, USER_NO"
+    students = conn.execute(sql, args).fetchall()
+    sel_map = {}
+    if rnd:
+        for r in conn.execute(
+                "SELECT s.USER_ID, s.STATUS, s.WISH_NO, s.QUEUE_NO, t.TOPIC_NAME, t.TOPIC_CODE"
+                " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+                " WHERE s.ROUND_ID=? AND s.STATUS IN('confirmed','waiting','wish','entry')",
+                (rnd["ID"],)).fetchall():
+            sel_map[r["USER_ID"]] = r
+    rows = []
+    for s in students:
+        sel = sel_map.get(s["ID"])
+        rows.append(dict(student=s, sel=sel,
+                         status=sel["STATUS"] if sel else "none"))
+    if status_filter:
+        rows = [r for r in rows if r["status"] == status_filter]
+    conn.close()
+    return render_template("teacher/students.html", rows=rows, round=rnd, kw=kw,
+                           status_filter=status_filter)
+
+
+# ---------------- 教师端：公告管理 ----------------
+
+@app.route("/teacher/announce", methods=["GET", "POST"])
+@login_required("teacher")
+def teacher_announce():
+    conn = get_conn()
+    if request.method == "POST":
+        action = request.form.get("action")
+        ts = now_str()
+        if action == "add":
+            conn.execute(
+                "INSERT INTO ANNOUNCEMENTS(TITLE,CONTENT,TEACHER_ID,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
+                " VALUES(?,?,?,?,?,?,1)",
+                (request.form["title"].strip(), request.form.get("content", "").strip(),
+                 session["user_id"], ts, session["user_name"], ts))
+            flash("公告已发布，学生首页可见", "success")
+        elif action == "delete":
+            own = conn.execute("SELECT ID FROM ANNOUNCEMENTS WHERE ID=? AND TEACHER_ID=?",
+                               (int(request.form["ann_id"]), session["user_id"])).fetchone()
+            if own:
+                conn.execute("UPDATE ANNOUNCEMENTS SET FLAG=0 WHERE ID=?", (int(request.form["ann_id"]),))
+                flash("公告已撤回", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("teacher_announce"))
+    anns = conn.execute(
+        "SELECT * FROM ANNOUNCEMENTS WHERE FLAG=1 AND TEACHER_ID=? ORDER BY PUBLISHED_AT DESC",
+        (session["user_id"],)).fetchall()
+    conn.close()
+    return render_template("teacher/announce.html", anns=anns)
 
 
 # ---------------- 教师端：题库（仅自己的课题） ----------------

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}首页 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>你好，{{ session.real_name }} 👋</h2>
+    <p class="page-sub">{% if advisor %}指导教师：{{ advisor.REAL_NAME }}{% else %}尚未分配指导教师{% endif %}</p>
+  </div>
+  {% if round %}<span class="tag tag-green" id="countdown-box">截止倒计时计算中…</span>{% endif %}
+</div>
+
+{% if not advisor %}
+<div class="empty-guide">
+  <div class="empty-icon">👨‍🏫</div>
+  <p>你还没有分配指导教师，请联系管理员分配。</p>
+  <p class="empty-sub">分配后即可看到老师的开放课题并选题</p>
+</div>
+{% elif not round %}
+<div class="empty-guide">
+  <div class="empty-icon">⏳</div>
+  <p>指导教师（{{ advisor.REAL_NAME }}）尚未开放选题</p>
+  <p class="empty-sub">老师开放轮次后，这里会显示倒计时，届时即可选题</p>
+</div>
+{% else %}
+
+<!-- 待办卡片：我现在该干什么 -->
+<div class="card todo-card {{ 'todo-done' if confirmed }}">
+  <div class="todo-main">
+    <div class="todo-icon">{{ '✅' if confirmed else '📌' }}</div>
+    <div>
+      <h3>
+        {% if confirmed %}你已完成选题
+        {% elif waiting %}你在候补队列中
+        {% elif wishes %}你已提交{{ '志愿' if round.RULE=='multi_wish' else '报名' }}，等待老师{{ '分配' if round.RULE=='multi_wish' else '抽签' }}
+        {% else %}你还没有选题，请尽快完成{% endif %}
+      </h3>
+      {% if confirmed %}
+      <p>已确认课题：<b>{{ confirmed.TOPIC_NAME }}</b>（选题时间 {{ confirmed.SELECTED_AT }}）</p>
+      {% elif waiting %}
+      <p>候补课题：<b>{{ waiting.TOPIC_NAME }}</b>（候补第 {{ waiting.QUEUE_NO }} 位，有人退选将自动递补）</p>
+      {% elif wishes %}
+      <p>已提交 {{ wishes|length }} 个{{ '志愿' if round.RULE=='multi_wish' else '报名' }}，请留意「我的选题」查看结果</p>
+      {% else %}
+      <p>本轮模式：{{ rule_name }}｜截止时间：{{ round.END_AT }}</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="todo-actions">
+    {% if confirmed or waiting %}
+    <a class="btn btn-default" href="{{ url_for('student_mine') }}">查看我的选题</a>
+    {% elif wishes %}
+    <a class="btn btn-default" href="{{ url_for('student_wish') }}">查看志愿</a>
+    {% elif round.RULE in ('multi_wish','lottery') %}
+    <a class="btn btn-primary" href="{{ url_for('student_wish') }}">{{ '去填报志愿' if round.RULE=='multi_wish' else '去报名' }}</a>
+    {% else %}
+    <a class="btn btn-primary" href="{{ url_for('student_browse') }}">去浏览题库选题</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 数据概览 -->
+<div class="stat-cards">
+  <div class="stat-card"><div class="num">{{ topic_total }}</div><div class="label">老师开放的课题</div></div>
+  <div class="stat-card"><div class="num">{{ topic_confirmed }}</div><div class="label">全班已确认人数</div></div>
+  <div class="stat-card">
+    <div class="num">{{ '已确认' if confirmed else '候补中' if waiting else '待分配' if wishes else '未选题' }}</div>
+    <div class="label">我的状态</div>
+  </div>
+</div>
+
+<!-- 老师公告 -->
+<div class="card">
+  <h3>📣 老师公告</h3>
+  {% if announcements %}
+  <div class="ann-list">
+    {% for a in announcements %}
+    <div class="ann-item">
+      <div class="ann-title">{{ a.TITLE }}</div>
+      <div class="ann-meta">{{ advisor.REAL_NAME }} · {{ a.PUBLISHED_AT }}</div>
+      {% if a.CONTENT %}<div class="ann-content">{{ a.CONTENT }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-inline">老师暂未发布公告</p>
+  {% endif %}
+</div>
+
+<!-- 快捷入口 -->
+<div class="quick-links">
+  <a class="quick-link" href="{{ url_for('student_browse') }}">📋<span>浏览题库</span></a>
+  <a class="quick-link" href="{{ url_for('student_wish') }}">📝<span>志愿填报</span></a>
+  <a class="quick-link" href="{{ url_for('student_mine') }}">✅<span>我的选题</span></a>
+  <a class="quick-link" href="{{ url_for('student_public') }}">📢<span>结果公示</span></a>
+</div>
+{% endif %}
+
+<script>
+// 截止倒计时
+{% if round %}
+(function(){
+  var end = new Date("{{ round.END_AT.replace(' ', 'T') }}");
+  var box = document.getElementById("countdown-box");
+  function tick(){
+    var d = end - new Date();
+    if (d <= 0) { box.innerText = "本轮已截止"; box.className = "tag tag-red"; return; }
+    var day = Math.floor(d/86400000), h = Math.floor(d%86400000/3600000), m = Math.floor(d%3600000/60000);
+    box.innerText = "⏰ 距截止 " + (day>0? day+"天 ":"") + h + "小时" + m + "分";
+  }
+  tick(); setInterval(tick, 60000);
+})();
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}公告管理 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>📣 公告管理</h2>
+    <p class="page-sub">发布的公告将展示在你名下学生的首页</p>
+  </div>
+</div>
+
+<div class="card">
+  <h3>发布新公告</h3>
+  <form method="post" class="vform">
+    <input type="hidden" name="action" value="add">
+    <div class="form-item"><label>标题</label><input name="title" required placeholder="如：选题截止提醒"></div>
+    <div class="form-item"><label>内容</label><textarea name="content" rows="4" placeholder="公告正文（选填）"></textarea></div>
+    <button class="btn btn-primary" type="submit">发布</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>已发布公告</h3>
+  <table>
+    <thead><tr><th>标题</th><th>内容</th><th>发布时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for a in anns %}
+      <tr>
+        <td>{{ a.TITLE }}</td>
+        <td>{{ a.CONTENT or '-' }}</td>
+        <td>{{ a.PUBLISHED_AT }}</td>
+        <td>
+          <form method="post" style="display:inline;" onsubmit="return confirm('确认撤回该公告？')">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="ann_id" value="{{ a.ID }}">
+            <button class="btn btn-danger btn-sm">撤回</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">暂无公告</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

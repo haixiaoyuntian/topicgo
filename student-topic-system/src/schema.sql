@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS ANNOUNCEMENTS (
     ID             INTEGER PRIMARY KEY AUTOINCREMENT,
     TITLE          TEXT NOT NULL,
     CONTENT        TEXT,
+    TEACHER_ID     INTEGER,                           -- 公告归属教师（学生只看自己老师的公告）
     PUBLISHED_AT   TEXT,
     CREATED_BY     TEXT,
     CREATED_AT     TEXT,

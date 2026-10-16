@@ -76,6 +76,15 @@
         </td>
       </tr>
     {% endfor %}
+    {% if not topics %}
+      <tr><td colspan="8" style="border:none;">
+        <div class="empty-guide" style="box-shadow:none;padding:32px;">
+          <div class="empty-icon">📭</div>
+          <p>暂无符合条件的课题</p>
+          <p class="empty-sub">{% if kw or tag or diff %}试试清除筛选条件{% else %}你的老师还没有发布课题，请耐心等待{% endif %}</p>
+        </div>
+      </td></tr>
+    {% endif %}
     </tbody>
   </table>
 </div>

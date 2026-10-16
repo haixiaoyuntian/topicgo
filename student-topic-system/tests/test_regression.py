@@ -268,6 +268,25 @@ check("教师不能改他人课题", name5 != "篡改")
 body = get(login("zhangsan"), "/student/browse")
 check("zhangsan 看到刘老师的课题", "区块链" in body or "T05" in body)
 
+# ---------- 11. Dashboard / 我的学生 / 公告 ----------
+print("\n== 11. Dashboard与公告 ==")
+reset_round()
+body = get(login("zhangsan"), "/student/index")
+check("学生首页可访问", "你好" in body)
+body = get(login("teacher"), "/teacher/index")
+check("教师首页可访问", "教师工作台" in body)
+body = get(login("teacher"), "/teacher/students")
+check("我的学生页可访问", "我的学生" in body and "张明" in body)
+check("学生不能访问教师页", "无权限" in get(login("zhangsan"), "/teacher/students"))
+tea = login("teacher")
+post(tea, "/teacher/announce", data={"action": "add", "title": "本周五截止选题", "content": "请尽快完成选题"})
+check("教师发布公告", sql("SELECT COUNT(*) c FROM ANNOUNCEMENTS WHERE TITLE='本周五截止选题'")[0]["c"] == 1)
+body = get(login("zhangsan"), "/student/index")
+check("学生首页看到老师公告", "本周五截止选题" in body)
+# 其他老师的学生看不到该公告
+body = get(login("stu_of_t2"), "/student/index")
+check("非本老师学生看不到公告", "本周五截止选题" not in body)
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:

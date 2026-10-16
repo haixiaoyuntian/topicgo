@@ -52,6 +52,15 @@
         </td>
       </tr>
     {% endfor %}
+    {% if not topics %}
+      <tr><td colspan="6" style="border:none;">
+        <div class="empty-guide" style="box-shadow:none;padding:32px;">
+          <div class="empty-icon">🗂</div>
+          <p>你还没有发布课题</p>
+          <p class="empty-sub">点击右上角「+ 新增题目」发布你的第一个课题</p>
+        </div>
+      </td></tr>
+    {% endif %}
     </tbody>
   </table>
 </div>

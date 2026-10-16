@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}我的学生 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>👨‍🎓 我的学生</h2>
+    <p class="page-sub">共 {{ rows|length }} 名学生{% if round %}｜轮次：{{ round.ROUND_NAME }}{% endif %}</p>
+  </div>
+</div>
+
+<div class="card">
+  <form class="toolbar" method="get">
+    <input name="kw" value="{{ kw }}" placeholder="🔍 学号/姓名" style="width:200px;">
+    <select name="status">
+      <option value="">全部状态</option>
+      <option value="none" {{ 'selected' if status_filter=='none' }}>未选题</option>
+      <option value="confirmed" {{ 'selected' if status_filter=='confirmed' }}>已确认</option>
+      <option value="waiting" {{ 'selected' if status_filter=='waiting' }}>候补中</option>
+      <option value="wish" {{ 'selected' if status_filter=='wish' }}>志愿待分配</option>
+      <option value="entry" {{ 'selected' if status_filter=='entry' }}>待抽签</option>
+    </select>
+    <button class="btn btn-primary" type="submit">查询</button>
+  </form>
+  <table>
+    <thead><tr><th>学号</th><th>姓名</th><th>班级</th><th>绩点</th><th>选题状态</th><th>志愿/候补序号</th><th>课题</th><th>选题时间</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{{ 'row-warn' if r.status=='none' }}">
+        <td>{{ r.student.USER_NO }}</td>
+        <td>{{ r.student.REAL_NAME }}</td>
+        <td>{{ r.student.CLASS_NAME or '-' }}</td>
+        <td>{{ r.student.GPA }}</td>
+        <td>
+          {% if r.status=='none' %}<span class="tag tag-red">未选题</span>
+          {% elif r.status=='confirmed' %}<span class="tag tag-green">已确认</span>
+          {% elif r.status=='waiting' %}<span class="tag tag-orange">候补中</span>
+          {% elif r.status=='wish' %}<span class="tag tag-blue">志愿待分配</span>
+          {% else %}<span class="tag tag-blue">待抽签</span>{% endif %}
+        </td>
+        <td>{{ r.sel.WISH_NO or r.sel.QUEUE_NO or '-' if r.sel else '-' }}</td>
+        <td>{{ r.sel.TOPIC_NAME if r.sel else '-' }}</td>
+        <td>{{ r.sel.SELECTED_AT if r.sel else '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">暂无学生</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。</p>
+</div>
+{% endblock %}

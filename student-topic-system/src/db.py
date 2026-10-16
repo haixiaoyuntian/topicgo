@@ -47,6 +47,9 @@ def migrate(conn):
     sel_cols = _columns(conn, "SELECTIONS")
     if "WISH_NO" not in sel_cols:
         conn.execute("ALTER TABLE SELECTIONS ADD COLUMN WISH_NO INTEGER")
+    ann_cols = _columns(conn, "ANNOUNCEMENTS")
+    if "TEACHER_ID" not in ann_cols:
+        conn.execute("ALTER TABLE ANNOUNCEMENTS ADD COLUMN TEACHER_ID INTEGER")
     conn.execute("""CREATE TABLE IF NOT EXISTS SELECTION_EVENTS (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         ROUND_ID INTEGER NOT NULL, TOPIC_ID INTEGER, USER_ID INTEGER,
