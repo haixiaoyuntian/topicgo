@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>{% block title %}学生选题系统{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">Topic<span>Go</span><br><small>学生选题系统</small></div>
+    {% if session.role == 'student' %}
+    <div class="menu-group">学生功能</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_browse' }}" href="{{ url_for('student_browse') }}">📋 浏览题库</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_mine' }}" href="{{ url_for('student_mine') }}">✅ 我的选题</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_public' }}" href="{{ url_for('student_public') }}">📢 结果公示</a>
+    {% else %}
+    <div class="menu-group">教师功能</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
+    {% endif %}
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div>
+        {% if round %}
+        <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' }}模式</span>
+        {% else %}
+        <span class="tag tag-red">● 当前无开放选题轮次</span>
+        {% endif %}
+      </div>
+      <div>
+        <span class="role-tag">{{ '学生' if session.role=='student' else '教师' }}</span>
+        <span class="user">{{ session.real_name }}</span>
+        <a class="logout" href="{{ url_for('logout') }}">退出</a>
+      </div>
+    </header>
+    <main class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+</body>
+</html>

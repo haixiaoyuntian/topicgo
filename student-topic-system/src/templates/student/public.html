@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}结果公示 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>选题结果公示（全员可见）</h3>
+  <table>
+    <thead><tr><th>题目编号</th><th>题目名称</th><th>选题人</th><th>班级</th><th>选题时间</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.TOPIC_CODE }}</td><td>{{ r.TOPIC_NAME }}</td><td>{{ r.REAL_NAME }}</td>
+          <td>{{ r.CLASS_NAME }}</td><td>{{ r.SELECTED_AT }}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">暂无选题记录</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

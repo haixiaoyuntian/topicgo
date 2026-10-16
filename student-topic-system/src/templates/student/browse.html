@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}浏览题库 - 学生选题系统{% endblock %}
+{% block content %}
+{% if round %}
+<div class="notice">⏰ 本轮选题截止：{{ round.END_AT }}。规则：每人限选 1 题，满员后可加入候补，退选名额自动递补。</div>
+{% else %}
+<div class="notice notice-red">当前不在选题窗口期，请联系任课教师。</div>
+{% endif %}
+
+<div class="card">
+  <h3>题库列表</h3>
+  <form class="toolbar" method="get">
+    <input name="kw" value="{{ kw }}" placeholder="🔍 搜索题目名称 / 关键词" style="width:240px;">
+    <select name="tag">
+      <option value="">全部标签</option>
+      {% for t in tags %}<option {{ 'selected' if t==tag }}>{{ t }}</option>{% endfor %}
+    </select>
+    <select name="diff">
+      <option value="">全部难度</option>
+      {% for d in ['较易','中等','较难'] %}<option {{ 'selected' if d==diff }}>{{ d }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary" type="submit">查询</button>
+  </form>
+  <table>
+    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>上限</th><th>已选/剩余</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for t in topics %}
+      {% set picked = stats.get(t.ID, 0) %}
+      {% set left = t.MAX_NUM - picked %}
+      <tr>
+        <td>{{ t.TOPIC_CODE }}</td>
+        <td><a class="link" href="javascript:;" title="{{ t.TOPIC_DESC }}">{{ t.TOPIC_NAME }}</a></td>
+        <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
+        <td><span class="tag {{ 'tag-red' if t.DIFFICULTY=='较难' else 'tag-orange' if t.DIFFICULTY=='中等' else 'tag-green' }}">{{ t.DIFFICULTY }}</span></td>
+        <td>{{ t.MAX_NUM }}</td>
+        <td>{{ picked }} / <b style="color:{{ '#ff4d4f' if left<=0 else '#52c41a' }}">{{ left }}</b></td>
+        <td>{% if left > 0 %}<span class="tag tag-green">可选题</span>{% else %}<span class="tag tag-red">已满员</span>{% endif %}</td>
+        <td>
+          {% if mine %}<button class="btn btn-default btn-sm" disabled>你已选题</button>
+          {% elif not round %}<button class="btn btn-default btn-sm" disabled>未开放</button>
+          {% elif left > 0 %}
+          <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
+            <button class="btn btn-primary btn-sm" onclick="return confirm('确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>
+          </form>
+          {% elif round.WAITLIST_ON %}
+          <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
+            <button class="btn btn-default btn-sm" onclick="return confirm('该题已满员，加入候补队列？')">加入候补</button>
+          </form>
+          {% else %}<button class="btn btn-default btn-sm" disabled>已满员</button>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

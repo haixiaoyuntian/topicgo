@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学生选题系统 TopicGo - 公正公开的课设选题平台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; color: #2c3e50; background: #fff; line-height: 1.7; }
+  a { color: #1890ff; text-decoration: none; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* 顶部导航 */
+  header { position: sticky; top: 0; background: rgba(255,255,255,.95); backdrop-filter: blur(6px); border-bottom: 1px solid #eee; z-index: 10; }
+  header .container { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .logo { font-size: 20px; font-weight: bold; }
+  .logo span { color: #52c41a; }
+  nav a { margin-left: 24px; font-size: 14px; color: #555; }
+  nav a:hover { color: #1890ff; }
+
+  /*  hero */
+  .hero { background: linear-gradient(135deg, #1890ff 0%, #001529 100%); color: #fff; padding: 90px 0 70px; text-align: center; }
+  .hero h1 { font-size: 40px; margin-bottom: 16px; }
+  .hero p { font-size: 17px; opacity: .85; max-width: 640px; margin: 0 auto 32px; }
+  .hero .btns a { display: inline-block; padding: 12px 32px; border-radius: 6px; font-size: 15px; margin: 0 8px; }
+  .btn-white { background: #fff; color: #1890ff; font-weight: bold; }
+  .btn-outline { border: 1px solid rgba(255,255,255,.6); color: #fff; }
+
+  section { padding: 64px 0; }
+  section:nth-of-type(even) { background: #f7f9fb; }
+  h2 { font-size: 28px; text-align: center; margin-bottom: 8px; }
+  .sub { text-align: center; color: #888; margin-bottom: 44px; }
+
+  /* 功能卡片 */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .feature { background: #fff; border: 1px solid #eee; border-radius: 10px; padding: 28px 24px; transition: .2s; }
+  .feature:hover { box-shadow: 0 8px 24px rgba(24,144,255,.12); transform: translateY(-4px); }
+  .feature .icon { font-size: 34px; margin-bottom: 14px; }
+  .feature h3 { font-size: 17px; margin-bottom: 8px; }
+  .feature p { font-size: 13.5px; color: #666; }
+
+  /* 截图 */
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .shot { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fafafa; }
+  .shot .ph { height: 220px; display: flex; align-items: center; justify-content: center; color: #aab; font-size: 14px; background: repeating-linear-gradient(45deg,#f5f7fa,#f5f7fa 12px,#eef2f6 12px,#eef2f6 24px); }
+  .shot .cap { padding: 12px 16px; font-size: 14px; background: #fff; border-top: 1px solid #eee; }
+
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
+  th, td { border: 1px solid #ebeef5; padding: 10px 12px; text-align: left; }
+  th { background: #f5f7fa; }
+
+  /* 步骤 */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; counter-reset: step; }
+  .step { background: #fff; border-radius: 10px; padding: 24px 20px; border-top: 3px solid #1890ff; }
+  .step b { display: block; font-size: 22px; color: #1890ff; margin-bottom: 8px; }
+  .step h4 { font-size: 15px; margin-bottom: 6px; }
+  .step p { font-size: 13px; color: #666; }
+
+  footer { background: #001529; color: #8c9aad; padding: 36px 0; font-size: 13px; }
+  footer .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  @media (max-width: 768px) { .features, .shots, .steps { grid-template-columns: 1fr; } .hero h1 { font-size: 30px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="logo">Topic<span>Go</span> 学生选题系统</div>
+    <nav>
+      <a href="#features">功能特性</a>
+      <a href="#shots">系统截图</a>
+      <a href="#get">获取方式</a>
+      <a href="#usage">使用说明</a>
+      <a href="flow.html">使用流程</a>
+      <a href="#team">开发团队</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="container">
+    <h1>公正公开的课设选题平台</h1>
+    <p>针对课程课设选题"顺序不透明、名额易超卖、统计靠手工"的痛点，TopicGo 提供规则化选题、实时名额监控、候补自动递补与结果公示，让选题公平高效、全程可追溯。</p>
+    <div class="btns">
+      <a class="btn-white" href="#get">立即体验</a>
+      <a class="btn-outline" href="https://gitee.com" target="_blank">Gitee 仓库</a>
+    </div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="container">
+    <h2>功能特性</h2>
+    <p class="sub">覆盖学生选题与教师管理的完整闭环</p>
+    <div class="features">
+      <div class="feature"><div class="icon">⚖️</div><h3>规则化选题</h3><p>支持"先到先得"与"绩点优先"两种模式一键切换，不同课程的公平性诉求都能满足。</p></div>
+      <div class="feature"><div class="icon">🔒</div><h3>并发防超卖</h3><p>数据库事务 + 唯一约束双重保障，多人同时抢题绝不超卖，每人限选 1 题。</p></div>
+      <div class="feature"><div class="icon">📋</div><h3>题库集中管理</h3><p>题目信息、人数上限、难度标签一处维护，学生端实时可见，支持搜索与多维筛选。</p></div>
+      <div class="feature"><div class="icon">⏳</div><h3>候补自动递补</h3><p>热门题目满员自动进入候补队列，有同学退选时按序号自动递补，提高题目利用率。</p></div>
+      <div class="feature"><div class="icon">📊</div><h3>实时监控与导出</h3><p>教师端实时查看各题已选/剩余/候补人数，一键导出 CSV 存档留痕。</p></div>
+      <div class="feature"><div class="icon">📢</div><h3>结果全员公示</h3><p>选题结果公开可查，过程透明，把"暗箱操作"的空间降为零。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="shots">
+  <div class="container">
+    <h2>系统截图</h2>
+    <p class="sub">以下为核心界面截图（点击可查看原型演示）</p>
+    <div class="shots">
+      <div class="shot"><div class="ph">[ 截图 ] 学生端 · 浏览题库</div><div class="cap">题目列表 + 实时剩余名额 + 搜索筛选</div></div>
+      <div class="shot"><div class="ph">[ 截图 ] 学生端 · 我的选题</div><div class="cap">选题状态确认 / 候补序号 / 一键退选</div></div>
+      <div class="shot"><div class="ph">[ 截图 ] 教师端 · 题库维护</div><div class="cap">题目增删改查与人数上限设置</div></div>
+      <div class="shot"><div class="ph">[ 截图 ] 教师端 · 选题监控</div><div class="cap">实时统计卡片 + 进度条 + CSV 导出</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="get">
+  <div class="container">
+    <h2>获取方式</h2>
+    <p class="sub">三种方式，即刻使用</p>
+    <table>
+      <tr><th style="width:160px;">方式</th><th>说明</th></tr>
+      <tr><td>🌐 在线体验</td><td>访问部署地址 <code>http://&lt;服务器IP&gt;:5000</code>（交叉评估期间开放，演示账号：学生 <code>zhangsan</code> / 教师 <code>teacher</code>，密码 <code>123456</code>）</td></tr>
+      <tr><td>💻 本地部署</td><td><code>git clone &lt;仓库地址&gt; &amp;&amp; cd src &amp;&amp; pip install -r requirements.txt &amp;&amp; python app.py</code>，浏览器访问 <code>http://localhost:5000</code></td></tr>
+      <tr><td>📱 移动端</td><td>系统为响应式 Web 应用，手机浏览器可直接访问同一地址使用</td></tr>
+    </table>
+    <p style="margin-top:16px;font-size:13px;color:#888;">提示：本页面通过 Gitee Pages 发布，发布地址保留至少 1 个月备查；可交互原型见仓库 prototype 目录。</p>
+  </div>
+</section>
+
+<section id="usage">
+  <div class="container">
+    <h2>使用说明</h2>
+    <p class="sub">四步完成选题</p>
+    <div class="steps">
+      <div class="step"><b>1</b><h4>登录系统</h4><p>学生使用学号、教师使用工号登录，初始密码 123456。</p></div>
+      <div class="step"><b>2</b><h4>浏览题库</h4><p>查看题目介绍与剩余名额，可按关键词、标签、难度筛选。</p></div>
+      <div class="step"><b>3</b><h4>确认选题</h4><p>点击"选题"并确认；满员题目可加入候补队列等待递补。</p></div>
+      <div class="step"><b>4</b><h4>查看公示</h4><p>在"我的选题"跟踪状态，在"结果公示"查看全员结果。</p></div>
+    </div>
+    <p style="text-align:center;margin-top:28px;"><a href="flow.html">查看图文版使用流程 →</a>　<a href="https://gitee.com" target="_blank">查看完整用户使用说明 →</a></p>
+  </div>
+</section>
+
+<section id="team">
+  <div class="container">
+    <h2>开发团队</h2>
+    <p class="sub">《软件工程》实践课程 · 第 X 小组</p>
+    <table>
+      <tr><th>姓名</th><th>角色</th><th>项目分工</th></tr>
+      <tr><td>张明</td><td>组长 / 后端开发</td><td>项目管理、系统架构、选题核心逻辑、登录认证</td></tr>
+      <tr><td>李琪</td><td>产品经理 / 文档</td><td>需求分析、原型设计、文档与发布网页</td></tr>
+      <tr><td>王浩</td><td>前端 / 后端开发</td><td>页面开发、数据库设计、题库与监控模块</td></tr>
+      <tr><td>赵雪</td><td>测试工程师 / 运维</td><td>测试计划与用例、并发测试、发布与用户反馈</td></tr>
+    </table>
+    <p style="text-align:center;margin-top:28px;font-size:14px;color:#666;">📮 用户反馈：欢迎通过 Gitee Issue 或邮件提交使用反馈，我们会认真分析每一条建议！</p>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div>学生选题系统 TopicGo · 《软件工程》实践课程项目</div>
+    <div>开源协议 MIT · Powered by Flask + SQLite</div>
+  </div>
+</footer>
+
+</body>
+</html>

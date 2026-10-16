@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>登录 - 学生选题系统</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+<div class="login-box">
+  <h2>学生选题系统</h2>
+  <p class="sub">TopicGo · 公正公开的课设选题平台</p>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  <form method="post">
+    <div class="form-item"><label>账号（学号/工号/登录名）</label>
+      <input name="username" required placeholder="如 20230101 或 zhangsan"></div>
+    <div class="form-item"><label>密码</label>
+      <input type="password" name="password" required placeholder="初始密码 123456"></div>
+    <button class="btn btn-primary btn-block" type="submit">登 录</button>
+  </form>
+  <p class="tip">演示账号：学生 zhangsan / 123456，教师 teacher / 123456</p>
+</div>
+</body>
+</html>

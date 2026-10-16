@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}我的选题 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>我的选题{% if round %}（{{ round.ROUND_NAME }}）{% endif %}</h3>
+  {% if rows %}
+  <table>
+    <thead><tr><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.TOPIC_CODE }}</td>
+        <td>{{ r.TOPIC_NAME }}</td>
+        <td>{{ r.MAX_NUM }}</td>
+        <td>{% if r.STATUS=='confirmed' %}<span class="tag tag-green">已确认</span>{% else %}<span class="tag tag-orange">候补中</span>{% endif %}</td>
+        <td>{{ r.QUEUE_NO or '-' }}</td>
+        <td>{{ r.SELECTED_AT }}</td>
+        <td>
+          {% if r.STATUS=='confirmed' %}
+          <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认退选？名额将递补给候补首位同学。')">
+            <button class="btn btn-danger btn-sm">退选</button>
+          </form>
+          {% else %}-{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">暂未选题，请前往「浏览题库」选题。</p>
+  {% endif %}
+</div>
+{% endblock %}

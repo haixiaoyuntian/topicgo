@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学生选题系统 - 可交互原型</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; }
+  .proto-banner { background: #ff9800; color: #fff; text-align: center; padding: 8px; font-size: 14px; position: sticky; top: 0; z-index: 99; }
+  .layout { display: flex; min-height: calc(100vh - 37px); }
+  /* 侧边菜单 */
+  .sidebar { width: 210px; background: #001529; color: #b8c7d9; flex-shrink: 0; }
+  .logo { color: #fff; font-weight: bold; font-size: 18px; padding: 16px; border-bottom: 1px solid #0d2b4a; }
+  .logo span { color: #4caf50; }
+  .menu-item { padding: 13px 20px; cursor: pointer; font-size: 14px; border-left: 3px solid transparent; }
+  .menu-item:hover { color: #fff; background: #12294a; }
+  .menu-item.active { color: #fff; background: #1890ff; border-left-color: #4caf50; }
+  .menu-group { font-size: 12px; color: #5a6b80; padding: 14px 20px 6px; }
+  /* 主区域 */
+  .main { flex: 1; display: flex; flex-direction: column; }
+  .topbar { height: 52px; background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .topbar .role-tag { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; font-size: 12px; padding: 2px 10px; border-radius: 10px; margin-right: 12px; }
+  .topbar .user { font-size: 14px; cursor: pointer; }
+  .content { padding: 20px; flex: 1; }
+  .page { display: none; }
+  .page.show { display: block; animation: fadeIn .25s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; } }
+  /* 卡片与表格 */
+  .card { background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .card h3 { font-size: 16px; margin-bottom: 14px; border-left: 4px solid #1890ff; padding-left: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #ebeef5; padding: 9px 10px; text-align: left; }
+  th { background: #f5f7fa; color: #606266; font-weight: 600; }
+  tr:hover td { background: #fafcff; }
+  .btn { display: inline-block; border: none; border-radius: 4px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-primary:hover { background: #40a9ff; }
+  .btn-danger { background: #ff4d4f; color: #fff; }
+  .btn-default { background: #fff; border: 1px solid #d9d9d9; color: #555; }
+  .btn[disabled] { background: #d9d9d9; color: #fff; cursor: not-allowed; }
+  .btn-sm { padding: 3px 10px; font-size: 12px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 4px; margin-right: 4px; }
+  .tag-blue { background: #e6f7ff; color: #1890ff; }
+  .tag-green { background: #f6ffed; color: #52c41a; }
+  .tag-orange { background: #fff7e6; color: #fa8c16; }
+  .tag-red { background: #fff1f0; color: #ff4d4f; }
+  .stat-cards { display: flex; gap: 16px; margin-bottom: 16px; }
+  .stat-card { flex: 1; background: #fff; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .stat-card .num { font-size: 26px; font-weight: bold; color: #1890ff; }
+  .stat-card .label { font-size: 13px; color: #888; margin-top: 4px; }
+  .progress { height: 8px; background: #ebeef5; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .progress > div { height: 100%; background: #52c41a; }
+  .progress.full > div { background: #ff4d4f; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+  .toolbar input, .toolbar select { border: 1px solid #d9d9d9; border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+  .notice { background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; padding: 10px 14px; font-size: 13px; color: #ad6800; margin-bottom: 14px; }
+  /* 登录页 */
+  .login-wrap { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 37px); background: linear-gradient(135deg,#1890ff 0%,#001529 100%); }
+  .login-box { background: #fff; border-radius: 10px; padding: 36px 40px; width: 380px; box-shadow: 0 8px 30px rgba(0,0,0,.2); }
+  .login-box h2 { text-align: center; margin-bottom: 6px; }
+  .login-box .sub { text-align: center; color: #999; font-size: 13px; margin-bottom: 24px; }
+  .form-item { margin-bottom: 16px; }
+  .form-item label { display: block; font-size: 13px; margin-bottom: 6px; color: #555; }
+  .form-item input, .form-item select { width: 100%; border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px 10px; font-size: 14px; }
+  .role-switch { display: flex; gap: 10px; margin-bottom: 16px; }
+  .role-switch div { flex: 1; text-align: center; padding: 8px 0; border: 1px solid #d9d9d9; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .role-switch div.sel { border-color: #1890ff; color: #1890ff; background: #e6f7ff; }
+  /* 弹窗 */
+  .modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; justify-content: center; align-items: center; }
+  .modal-mask.show { display: flex; }
+  .modal { background: #fff; border-radius: 8px; width: 460px; padding: 22px 24px; }
+  .modal h4 { font-size: 16px; margin-bottom: 14px; }
+  .modal .body { font-size: 14px; line-height: 1.8; color: #555; margin-bottom: 18px; }
+  .modal .footer { text-align: right; display: flex; justify-content: flex-end; gap: 10px; }
+  .toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.75); color: #fff; padding: 10px 22px; border-radius: 6px; font-size: 14px; display: none; z-index: 200; }
+  .flow-tip { font-size: 12px; color: #999; margin-top: 10px; line-height: 1.7; }
+  .mindmap-box { display: flex; gap: 40px; align-items: center; justify-content: center; padding: 20px; }
+  .node { background: #1890ff; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; text-align: center; position: relative; }
+  .node.green { background: #52c41a; } .node.orange { background: #fa8c16; }
+  .branch { display: flex; flex-direction: column; gap: 26px; }
+</style>
+</head>
+<body>
+
+<div class="proto-banner">【高保真可交互原型】学生选题系统 TopicGo — 点击左侧菜单体验完整流程：学生选题 / 教师管理 / 结果公示</div>
+
+<!-- ============ 登录页 ============ -->
+<div id="page-login">
+  <div class="login-wrap">
+    <div class="login-box">
+      <h2>学生选题系统</h2>
+      <div class="sub">TopicGo · 公正公开的课设选题平台</div>
+      <div class="role-switch">
+        <div id="role-stu" class="sel" onclick="switchRole('stu')">学生登录</div>
+        <div id="role-tea" onclick="switchRole('tea')">教师登录</div>
+      </div>
+      <div class="form-item"><label>账号</label><input id="login-user" value="20230101" placeholder="学号 / 工号"></div>
+      <div class="form-item"><label>密码</label><input type="password" value="123456"></div>
+      <button class="btn btn-primary" style="width:100%;padding:9px 0;font-size:15px;" onclick="doLogin()">登 录</button>
+      <div class="flow-tip" style="text-align:center;">原型演示：任意账号密码均可登录<br>学生端体验"浏览→选题→公示"，教师端体验"题库维护→轮次设置→监控导出"</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 系统主界面 ============ -->
+<div id="page-app" class="layout" style="display:none;">
+  <div class="sidebar">
+    <div class="logo">Topic<span>Go</span> 选题系统</div>
+    <div id="menu-student">
+      <div class="menu-group">学生功能</div>
+      <div class="menu-item active" data-page="p-browse" onclick="go(this)">📋 浏览题库</div>
+      <div class="menu-item" data-page="p-mine" onclick="go(this)">✅ 我的选题</div>
+      <div class="menu-item" data-page="p-public" onclick="go(this)">📢 结果公示</div>
+    </div>
+    <div id="menu-teacher" style="display:none;">
+      <div class="menu-group">教师功能</div>
+      <div class="menu-item" data-page="p-topics" onclick="go(this)">🗂 题库维护</div>
+      <div class="menu-item" data-page="p-round" onclick="go(this)">⚙️ 选题轮次</div>
+      <div class="menu-item" data-page="p-monitor" onclick="go(this)">📊 选题监控</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div><span id="round-status" class="tag tag-green">● 选题进行中 · 先到先得模式</span><span id="countdown" style="font-size:12px;color:#999;margin-left:10px;"></span></div>
+      <div><span class="role-tag" id="role-label">学生</span><span class="user" onclick="logout()">退出登录</span></div>
+    </div>
+    <div class="content">
+
+      <!-- 浏览题库（学生） -->
+      <div class="page show" id="p-browse">
+        <div class="notice">⏰ 本轮选题截止：2026-03-20 18:00。规则：每人限选 1 题，热门题目满员后可加入候补队列。</div>
+        <div class="card">
+          <h3>题库列表</h3>
+          <div class="toolbar">
+            <input placeholder="🔍 搜索题目名称 / 关键词" style="width:240px;" oninput="filterTopics(this.value)">
+            <select onchange="filterTag(this.value)"><option value="">全部标签</option><option>Web开发</option><option>人工智能</option><option>数据分析</option><option>区块链</option></select>
+            <select onchange="filterDiff(this.value)"><option value="">全部难度</option><option>较易</option><option>中等</option><option>较难</option></select>
+          </div>
+          <table id="topic-table">
+            <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>上限</th><th>已选/剩余</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 我的选题（学生） -->
+      <div class="page" id="p-mine">
+        <div class="card">
+          <h3>我的选题</h3>
+          <div id="my-selection"></div>
+        </div>
+      </div>
+
+      <!-- 结果公示（学生） -->
+      <div class="page" id="p-public">
+        <div class="card">
+          <h3>选题结果公示（全员可见）</h3>
+          <table id="public-table">
+            <thead><tr><th>题目</th><th>选题人</th><th>班级</th><th>选题时间</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 题库维护（教师） -->
+      <div class="page" id="p-topics">
+        <div class="card">
+          <h3>题库维护
+            <button class="btn btn-primary btn-sm" style="float:right;" onclick="showModal('modal-topic')">+ 新增题目</button>
+          </h3>
+          <table id="manage-table">
+            <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>操作</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 选题轮次（教师） -->
+      <div class="page" id="p-round">
+        <div class="card">
+          <h3>选题轮次设置</h3>
+          <div class="form-item"><label>轮次名称</label><input value="2026春季课设选题·第一轮" style="width:300px;"></div>
+          <div class="form-item"><label>选题规则</label>
+            <select style="width:300px;"><option>先到先得（实时锁定名额）</option><option>绩点优先（按绩点排名依次选择）</option></select>
+          </div>
+          <div class="form-item"><label>选题窗口</label><input type="datetime-local" value="2026-03-16T08:00"> — <input type="datetime-local" value="2026-03-20T18:00"></div>
+          <div class="form-item"><label>候补递补</label><select style="width:300px;"><option>开启（有人退选自动递补）</option><option>关闭</option></select></div>
+          <button class="btn btn-primary" onclick="toast('原型演示：设置已保存')">保存设置</button>
+          <button class="btn btn-danger" onclick="toast('原型演示：本轮选题已关闭，结果已锁定')" style="margin-left:10px;">关闭本轮选题</button>
+        </div>
+      </div>
+
+      <!-- 选题监控（教师） -->
+      <div class="page" id="p-monitor">
+        <div class="stat-cards">
+          <div class="stat-card"><div class="num" id="st-total">0</div><div class="label">题目总数</div></div>
+          <div class="stat-card"><div class="num" id="st-picked">0</div><div class="label">已选人数</div></div>
+          <div class="stat-card"><div class="num" id="st-left">0</div><div class="label">剩余名额</div></div>
+          <div class="stat-card"><div class="num">82%</div><div class="label">选题完成率</div></div>
+        </div>
+        <div class="card">
+          <h3>实时选题情况 <button class="btn btn-default btn-sm" style="float:right;" onclick="toast('原型演示：CSV 已导出')">导出 CSV</button></h3>
+          <table id="monitor-table">
+            <thead><tr><th>题目</th><th>进度</th><th>已选/上限</th><th>候补人数</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 弹窗：题目详情/选题确认 -->
+<div class="modal-mask" id="modal-topic-detail"><div class="modal">
+  <h4 id="detail-title"></h4>
+  <div class="body" id="detail-body"></div>
+  <div class="footer">
+    <button class="btn btn-default" onclick="hideModal('modal-topic-detail')">取消</button>
+    <button class="btn btn-primary" id="detail-ok" onclick="confirmSelect()">确认选题</button>
+  </div>
+</div></div>
+
+<!-- 弹窗：新增题目（教师） -->
+<div class="modal-mask" id="modal-topic"><div class="modal">
+  <h4>新增题目</h4>
+  <div class="body">
+    <div class="form-item"><label>题目名称</label><input style="width:100%;" placeholder="如：基于Flask的图书管理系统"></div>
+    <div class="form-item"><label>人数上限</label><input style="width:100%;" type="number" value="4"></div>
+    <div class="form-item"><label>标签</label><input style="width:100%;" placeholder="如：Web开发"></div>
+    <div class="form-item"><label>难度</label><select style="width:100%;"><option>较易</option><option selected>中等</option><option>较难</option></select></div>
+  </div>
+  <div class="footer">
+    <button class="btn btn-default" onclick="hideModal('modal-topic')">取消</button>
+    <button class="btn btn-primary" onclick="toast('原型演示：题目已创建');hideModal('modal-topic')">保存</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- 模拟数据 ---------- */
+const topics = [
+  { id:'T01', name:'基于Flask的图书管理系统', tag:'Web开发', diff:'较易', max:4, picked:4 },
+  { id:'T02', name:'学生选题系统（本组题目）', tag:'Web开发', diff:'中等', max:4, picked:2 },
+  { id:'T03', name:'基于YOLOv5的课堂专注度识别', tag:'人工智能', diff:'较难', max:3, picked:3 },
+  { id:'T04', name:'电商销售数据分析与可视化', tag:'数据分析', diff:'中等', max:5, picked:1 },
+  { id:'T05', name:'区块链五子棋积分结算游戏', tag:'区块链', diff:'较难', max:3, picked:0 },
+  { id:'T06', name:'校园二手交易小程序', tag:'Web开发', diff:'中等', max:6, picked:5 },
+];
+const publicRecords = [
+  { topic:'基于Flask的图书管理系统', name:'张明', cls:'软工2301', time:'2026-03-16 09:12' },
+  { topic:'基于YOLOv5的课堂专注度识别', name:'李琪', cls:'软工2302', time:'2026-03-16 09:20' },
+  { topic:'电商销售数据分析与可视化', name:'王浩', cls:'软工2301', time:'2026-03-16 10:05' },
+];
+let myTopic = null, curRole = 'stu', curTopicId = null;
+
+/* ---------- 登录 ---------- */
+function switchRole(r){
+  curRole = r;
+  document.getElementById('role-stu').className = r==='stu'?'sel':'';
+  document.getElementById('role-tea').className = r==='tea'?'sel':'';
+  document.getElementById('login-user').value = r==='stu' ? '20230101' : 'T2001';
+}
+function doLogin(){
+  document.getElementById('page-login').style.display='none';
+  document.getElementById('page-app').style.display='flex';
+  document.getElementById('menu-student').style.display = curRole==='stu'?'block':'none';
+  document.getElementById('menu-tea').style.display = curRole==='tea'?'block':'none';
+  document.getElementById('role-label').innerText = curRole==='stu'?'学生':'教师';
+  if(curRole==='tea'){ go(document.querySelector('[data-page="p-topics"]')); renderManage(); renderMonitor(); }
+  else { renderTopics(); renderMine(); renderPublic(); }
+}
+function logout(){
+  document.getElementById('page-app').style.display='none';
+  document.getElementById('page-login').style.display='block';
+}
+
+/* ---------- 菜单切换 ---------- */
+function go(el){
+  document.querySelectorAll('.menu-item').forEach(m=>m.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('show'));
+  document.getElementById(el.dataset.page).classList.add('show');
+  if(el.dataset.page==='p-mine') renderMine();
+  if(el.dataset.page==='p-public') renderPublic();
+  if(el.dataset.page==='p-monitor') renderMonitor();
+}
+
+/* ---------- 学生：浏览题库 ---------- */
+function topicRows(list){
+  return list.map(t=>{
+    const left = t.max - t.picked, full = left<=0;
+    return `<tr>
+      <td>${t.id}</td><td><a href="javascript:;" style="color:#1890ff;" onclick="openDetail('${t.id}')">${t.name}</a></td>
+      <td><span class="tag tag-blue">${t.tag}</span></td>
+      <td><span class="tag ${t.diff==='较难'?'tag-red':t.diff==='中等'?'tag-orange':'tag-green'}">${t.diff}</span></td>
+      <td>${t.max}</td>
+      <td>${t.picked} / <b style="color:${full?'#ff4d4f':'#52c41a'}">${left}</b></td>
+      <td>${full?'<span class="tag tag-red">已满员</span>':'<span class="tag tag-green">可选题</span>'}</td>
+      <td>${myTopic ? '<button class="btn btn-default btn-sm" disabled>已选其他题</button>'
+          : full ? '<button class="btn btn-default btn-sm" onclick="toast(\'原型演示：已加入候补队列\')">加入候补</button>'
+                 : '<button class="btn btn-primary btn-sm" onclick="openDetail(\''+t.id+'\')">选题</button>'}</td>
+    </tr>`;
+  }).join('');
+}
+function renderTopics(){ document.querySelector('#topic-table tbody').innerHTML = topicRows(topics); }
+function filterTopics(kw){ renderTopics(); }
+function filterTag(v){ renderTopics(); }
+function filterDiff(v){ renderTopics(); }
+
+function openDetail(id){
+  const t = topics.find(x=>x.id===id);
+  curTopicId = id;
+  document.getElementById('detail-title').innerText = t.id + ' ' + t.name;
+  document.getElementById('detail-body').innerHTML =
+    `<b>标签：</b>${t.tag}　<b>难度：</b>${t.diff}<br><b>人数上限：</b>${t.max} 人<br><b>已选：</b>${t.picked} 人<br><b>剩余：</b>${t.max-t.picked} 人<br><b>内容简介：</b>本题目要求综合运用软件工程方法，完成系统的需求分析、设计、实现与测试，鼓励使用智能化开发工具。<br><span style="color:#ff4d4f;">注意：每人限选 1 题，确认后不可重复选择其他题目。</span>`;
+  showModal('modal-topic-detail');
+}
+function confirmSelect(){
+  const t = topics.find(x=>x.id===curTopicId);
+  t.picked++; myTopic = t;
+  publicRecords.unshift({topic:t.name, name:'我（20230101 张明）', cls:'软工2301', time:'2026-03-16 11:30'});
+  hideModal('modal-topic-detail');
+  toast('选题成功！请在"我的选题"查看');
+  renderTopics(); renderMine(); renderPublic();
+}
+
+/* ---------- 学生：我的选题 ---------- */
+function renderMine(){
+  document.getElementById('my-selection').innerHTML = myTopic
+    ? `<table><tr><th>题目</th><th>状态</th><th>选题时间</th><th>操作</th></tr>
+       <tr><td>${myTopic.name}</td><td><span class="tag tag-green">已确认</span></td><td>2026-03-16 11:30</td>
+       <td><button class="btn btn-danger btn-sm" onclick="cancelSelect()">退选</button></td></tr></table>
+       <div class="flow-tip">退选后名额释放给候补队列第一位同学（原型演示）。</div>`
+    : '<div style="color:#999;padding:20px 0;">暂未选题，请前往"浏览题库"选题。</div>';
+}
+function cancelSelect(){
+  myTopic.picked--; myTopic = null; renderTopics(); renderMine();
+  toast('已退选，名额已释放');
+}
+
+/* ---------- 结果公示 ---------- */
+function renderPublic(){
+  document.querySelector('#public-table tbody').innerHTML =
+    publicRecords.map(r=>`<tr><td>${r.topic}</td><td>${r.name}</td><td>${r.cls}</td><td>${r.time}</td></tr>`).join('');
+}
+
+/* ---------- 教师：题库维护 ---------- */
+function renderManage(){
+  document.querySelector('#manage-table tbody').innerHTML = topics.map(t=>
+    `<tr><td>${t.id}</td><td>${t.name}</td><td><span class="tag tag-blue">${t.tag}</span></td>
+     <td>${t.diff}</td><td>${t.max}</td>
+     <td><button class="btn btn-default btn-sm" onclick="toast('原型演示：进入编辑')">编辑</button>
+         <button class="btn btn-danger btn-sm" onclick="toast('原型演示：已删除')">删除</button></td></tr>`).join('');
+}
+
+/* ---------- 教师：选题监控 ---------- */
+function renderMonitor(){
+  document.getElementById('st-total').innerText = topics.length;
+  document.getElementById('st-picked').innerText = topics.reduce((s,t)=>s+t.picked,0);
+  document.getElementById('st-left').innerText = topics.reduce((s,t)=>s+(t.max-t.picked),0);
+  document.querySelector('#monitor-table tbody').innerHTML = topics.map(t=>{
+    const pct = Math.round(t.picked/t.max*100);
+    return `<tr><td>${t.name}</td>
+      <td><div class="progress ${pct>=100?'full':''}"><div style="width:${pct}%"></div></div></td>
+      <td>${t.picked} / ${t.max}</td><td>${Math.max(0,t.picked-(t.max))}</td></tr>`;
+  }).join('');
+}
+
+/* ---------- 工具 ---------- */
+function showModal(id){ document.getElementById(id).classList.add('show'); }
+function hideModal(id){ document.getElementById(id).classList.remove('show'); }
+let toastTimer;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.innerText = msg; el.style.display='block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>el.style.display='none', 2000);
+}
+setInterval(()=>{
+  const d = new Date('2026-03-20T18:00:00') - new Date('2026-03-16T11:30:00');
+  document.getElementById('countdown').innerText = '剩余 ' + Math.floor(d/86400000) + ' 天 ' + Math.floor(d%86400000/3600000) + ' 小时';
+}, 1000);
+</script>
+</body>
+</html>

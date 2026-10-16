@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}选题监控 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="stat-cards">
+  <div class="stat-card"><div class="num">{{ rows|length }}</div><div class="label">题目总数</div></div>
+  <div class="stat-card"><div class="num">{{ total_picked }}</div><div class="label">已选人数</div></div>
+  <div class="stat-card"><div class="num">{{ total_left }}</div><div class="label">剩余名额</div></div>
+  <div class="stat-card"><div class="num">{{ wait_total }}</div><div class="label">候补人数</div></div>
+</div>
+<div class="card">
+  <h3>实时选题情况
+    <a class="btn btn-default btn-sm" style="float:right;" href="{{ url_for('teacher_export') }}">导出 CSV</a>
+  </h3>
+  <table>
+    <thead><tr><th>编号</th><th>题目</th><th>进度</th><th>已选/上限</th><th>候补人数</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set pct = (r.picked / r.topic.MAX_NUM * 100)|round|int %}
+      <tr>
+        <td>{{ r.topic.TOPIC_CODE }}</td>
+        <td>{{ r.topic.TOPIC_NAME }}</td>
+        <td><div class="progress {{ 'full' if r.left<=0 }}"><div style="width:{{ pct }}%"></div></div></td>
+        <td>{{ r.picked }} / {{ r.topic.MAX_NUM }}</td>
+        <td>{{ r.waiting }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

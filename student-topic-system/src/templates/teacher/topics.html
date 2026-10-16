@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}题库维护 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>题库维护
+    <button class="btn btn-primary btn-sm" style="float:right;" onclick="document.getElementById('add-form').style.display='block'">+ 新增题目</button>
+  </h3>
+
+  <form id="add-form" method="post" class="inline-form" style="display:none;">
+    <input type="hidden" name="action" value="add">
+    <input name="topic_code" placeholder="编号 T07" required>
+    <input name="topic_name" placeholder="题目名称" required style="min-width:220px;">
+    <input name="tag" placeholder="标签">
+    <select name="difficulty"><option>较易</option><option selected>中等</option><option>较难</option></select>
+    <input name="max_num" type="number" value="4" min="1" style="width:70px;" title="人数上限">
+    <input name="topic_desc" placeholder="题目描述" style="min-width:220px;">
+    <button class="btn btn-primary btn-sm" type="submit">保存</button>
+  </form>
+
+  <table>
+    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for t in topics %}
+      <tr>
+        <td>{{ t.TOPIC_CODE }}</td>
+        <td>
+          <span class="td-name">{{ t.TOPIC_NAME }}</span>
+          <form method="post" class="inline-form edit-form">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="topic_id" value="{{ t.ID }}">
+            <input name="topic_name" value="{{ t.TOPIC_NAME }}" required>
+            <input name="tag" value="{{ t.TAG or '' }}" placeholder="标签">
+            <select name="difficulty">
+              {% for d in ['较易','中等','较难'] %}<option {{ 'selected' if d==t.DIFFICULTY }}>{{ d }}</option>{% endfor %}
+            </select>
+            <input name="max_num" type="number" value="{{ t.MAX_NUM }}" min="1" style="width:70px;">
+            <input name="topic_desc" value="{{ t.TOPIC_DESC or '' }}" placeholder="描述">
+            <button class="btn btn-primary btn-sm" type="submit">保存</button>
+            <button class="btn btn-default btn-sm" type="button" onclick="this.closest('form').style.display='none';this.closest('tr').querySelector('.td-name').style.display='inline';">取消</button>
+          </form>
+        </td>
+        <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
+        <td>{{ t.DIFFICULTY }}</td>
+        <td>{{ t.MAX_NUM }}</td>
+        <td>{% if t.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
+        <td>
+          <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';">编辑</button>
+          <form method="post" action="{{ url_for('teacher_topic_delete', topic_id=t.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认删除该题目？')">
+            <button class="btn btn-danger btn-sm">删除</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

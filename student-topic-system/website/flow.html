@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>使用流程 - 学生选题系统 TopicGo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #2c3e50; line-height: 1.7; }
+  .container { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  header { background: linear-gradient(135deg, #1890ff, #001529); color: #fff; padding: 40px 0 34px; }
+  header h1 { font-size: 28px; }
+  header p { opacity: .85; margin-top: 8px; font-size: 14px; }
+  header a.back { color: #fff; opacity: .8; font-size: 13px; display: inline-block; margin-bottom: 14px; }
+  header a.back:hover { opacity: 1; }
+
+  .tabs { display: flex; gap: 10px; margin: 26px 0 20px; }
+  .tabs button { flex: 1; border: 1px solid #d9d9d9; background: #fff; border-radius: 8px; padding: 12px 0; font-size: 15px; cursor: pointer; }
+  .tabs button.active { background: #1890ff; border-color: #1890ff; color: #fff; font-weight: bold; }
+
+  .flow { display: none; }
+  .flow.show { display: block; }
+  .step { display: flex; gap: 16px; background: #fff; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); border-left: 4px solid #1890ff; }
+  .step .no { flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; background: #1890ff; color: #fff; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 17px; }
+  .step.green { border-left-color: #52c41a; } .step.green .no { background: #52c41a; }
+  .step.orange { border-left-color: #fa8c16; } .step.orange .no { background: #fa8c16; }
+  .step h3 { font-size: 16px; margin-bottom: 4px; }
+  .step p { font-size: 13.5px; color: #555; }
+  .step .path { display: inline-block; margin-top: 6px; font-size: 12px; background: #e6f7ff; color: #1890ff; border-radius: 4px; padding: 2px 10px; }
+  .arrow { text-align: center; color: #b0b8c1; font-size: 20px; line-height: 1; margin: -6px 0 8px; }
+  .decision { background: #fffbe6; border: 1px dashed #fa8c16; border-radius: 8px; padding: 10px 16px; font-size: 13px; color: #ad6800; text-align: center; margin-bottom: 14px; }
+
+  .tips { background: #fff; border-radius: 10px; padding: 22px 24px; margin: 26px 0 40px; }
+  .tips h2 { font-size: 18px; margin-bottom: 12px; }
+  .tips li { font-size: 13.5px; color: #555; margin-left: 18px; margin-bottom: 6px; }
+  footer { background: #001529; color: #8c9aad; padding: 22px 0; font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="back" href="index.html">← 返回项目主页</a>
+    <h1>📖 软件使用流程</h1>
+    <p>按下面步骤操作，即可完成从登录到选题结果公示的全流程。详细图文说明见仓库 wiki/06-使用流程.md。</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="active" onclick="switchTab(this,'stu')">🎓 学生操作流程</button>
+    <button onclick="switchTab(this,'tea')">👨‍🏫 教师操作流程</button>
+  </div>
+
+  <!-- 学生流程 -->
+  <div class="flow show" id="flow-stu">
+    <div class="step">
+      <div class="no">1</div>
+      <div>
+        <h3>登录系统</h3>
+        <p>打开系统地址，输入学号（或登录名）与密码登录。</p>
+        <span class="path">演示账号：zhangsan / 123456</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step">
+      <div class="no">2</div>
+      <div>
+        <h3>浏览题库</h3>
+        <p>在「浏览题库」查看全部题目，可按关键词、标签、难度筛选，留意每题的"已选/剩余"名额。</p>
+        <span class="path">菜单：浏览题库</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="decision">判断：题目是否还有剩余名额？</div>
+    <div class="step">
+      <div class="no">3</div>
+      <div>
+        <h3>有名额 → 直接选题</h3>
+        <p>点击「选题」按钮，在弹窗中确认。注意：每人限选 1 题，确认后状态变为"已确认"。</p>
+        <span class="path">菜单：浏览题库 → 选题</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step orange">
+      <div class="no">4</div>
+      <div>
+        <h3>已满员 → 加入候补</h3>
+        <p>点击「加入候补」获得候补序号；有同学退选时，系统按队列顺序自动递补给你。</p>
+        <span class="path">菜单：浏览题库 → 加入候补</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step green">
+      <div class="no">5</div>
+      <div>
+        <h3>管理我的选题</h3>
+        <p>在「我的选题」查看状态（已确认/候补中）；如需更换题目，先「退选」释放名额（将递补给候补首位），再重新选题。</p>
+        <span class="path">菜单：我的选题</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step green">
+      <div class="no">6</div>
+      <div>
+        <h3>查看结果公示</h3>
+        <p>选题结束后，在「结果公示」页查看全员选题结果，核对个人信息。</p>
+        <span class="path">菜单：结果公示</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 教师流程 -->
+  <div class="flow" id="flow-tea">
+    <div class="step">
+      <div class="no">1</div>
+      <div>
+        <h3>登录系统</h3>
+        <p>使用工号登录教师账号。</p>
+        <span class="path">演示账号：teacher / 123456</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step">
+      <div class="no">2</div>
+      <div>
+        <h3>维护题库</h3>
+        <p>在「题库维护」新增题目：编号、名称、标签、难度、人数上限；支持编辑与删除（已有选题记录的题目不可删除）。</p>
+        <span class="path">菜单：题库维护 → + 新增题目</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step">
+      <div class="no">3</div>
+      <div>
+        <h3>设置选题轮次</h3>
+        <p>在「选题轮次」设置轮次名称、选题规则（先到先得 / 绩点优先）、起止时间、候补开关，保存并开启。</p>
+        <span class="path">菜单：选题轮次 → 保存设置</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="decision">等待：到达开始时间后学生开始选题；未到开始时间系统自动拒绝选题</div>
+    <div class="step orange">
+      <div class="no">4</div>
+      <div>
+        <h3>实时监控</h3>
+        <p>在「选题监控」查看各题已选/剩余/候补人数与完成率，掌握选题进度。</p>
+        <span class="path">菜单：选题监控</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step orange">
+      <div class="no">5</div>
+      <div>
+        <h3>结束轮次并锁定</h3>
+        <p>到达截止时间或手动「关闭本轮选题」，结果锁定不可再变更。</p>
+        <span class="path">菜单：选题轮次 → 关闭本轮选题</span>
+      </div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step green">
+      <div class="no">6</div>
+      <div>
+        <h3>导出结果存档</h3>
+        <p>点击「导出 CSV」下载选题结果（含候补信息），用于存档与上报。</p>
+        <span class="path">菜单：选题监控 → 导出 CSV</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tips">
+    <h2>⚠️ 注意事项</h2>
+    <ul>
+      <li>每人限选 1 题，想更换题目必须先退选；</li>
+      <li>退选后名额自动递补给候补队列第一位同学，请谨慎操作；</li>
+      <li>绩点优先模式下系统按绩点依次放行，被拒绝时请等待高绩点同学先选；</li>
+      <li>只有在轮次开放且处于起止时间内才能选题；</li>
+      <li>遇到问题请通过项目主页公布的方式反馈。</li>
+    </ul>
+  </div>
+</div>
+
+<footer>学生选题系统 TopicGo · 《软件工程》实践课程项目</footer>
+
+<script>
+function switchTab(btn, id) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.flow').forEach(f => f.classList.remove('show'));
+  document.getElementById('flow-' + id).classList.add('show');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

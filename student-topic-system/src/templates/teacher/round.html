@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}选题轮次 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>选题轮次设置</h3>
+  {% if round %}
+  <form method="post" class="vform">
+    <input type="hidden" name="round_id" value="{{ round.ID }}">
+    <div class="form-item"><label>轮次名称</label><input name="round_name" value="{{ round.ROUND_NAME }}" required></div>
+    <div class="form-item"><label>选题规则</label>
+      <select name="rule">
+        <option value="first_come" {{ 'selected' if round.RULE=='first_come' }}>先到先得（实时锁定名额）</option>
+        <option value="gpa_priority" {{ 'selected' if round.RULE=='gpa_priority' }}>绩点优先（按绩点排名依次选择）</option>
+      </select>
+    </div>
+    <div class="form-item"><label>选题开始时间</label><input name="start_at" value="{{ round.START_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
+    <div class="form-item"><label>选题截止时间</label><input name="end_at" value="{{ round.END_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
+    <div class="form-item"><label>候补递补</label>
+      <select name="waitlist_on">
+        <option value="1" {{ 'selected' if round.WAITLIST_ON }}>开启（有人退选自动递补）</option>
+        <option value="0" {{ 'selected' if not round.WAITLIST_ON }}>关闭</option>
+      </select>
+    </div>
+    <div class="form-item"><label>轮次状态</label>
+      <select name="status">
+        <option value="open" {{ 'selected' if round.STATUS=='open' }}>开放</option>
+        <option value="closed" {{ 'selected' if round.STATUS=='closed' }}>关闭</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit">保存设置</button>
+  </form>
+  {% else %}
+  <p class="empty">尚未创建选题轮次。</p>
+  {% endif %}
+</div>
+{% endblock %}
