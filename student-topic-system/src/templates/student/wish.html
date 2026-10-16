@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ rule_name }} - 学生选题系统{% endblock %}
+{% block content %}
+{% if round %}
+<div class="notice">⏰ 本轮截止：{{ round.END_AT }}｜模式：{{ rule_name }}
+  {% if round.RULE == 'multi_wish' %}｜每人最多 {{ round.MAX_WISH }} 个志愿，分配时按志愿顺序 + 绩点优先
+  {% else %}｜报名不限名额，结束后公开抽签（种子可复现验证）{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>{{ '志愿填报' if round and round.RULE=='multi_wish' else '抽签报名' }}</h3>
+  {% if mine %}
+    <p class="empty">你已提交{{ '志愿' if round and round.RULE=='multi_wish' else '报名' }}，等待教师执行{{ '分配' if round and round.RULE=='multi_wish' else '抽签' }}。如需修改请联系教师。</p>
+    <table>
+      <thead><tr><th>题目编号</th><th>题目名称</th><th>{{ '志愿序号' if round and round.RULE=='multi_wish' else '报名时间' }}</th></tr></thead>
+      <tbody>
+      {% for m in mine %}
+        <tr><td>{{ m.TOPIC_CODE if m.TOPIC_CODE else '' }}</td><td>{{ m.TOPIC_NAME }}</td><td>{{ m.WISH_NO or m.SELECTED_AT }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+  <form method="post" onsubmit="return checkWishes()">
+    <table>
+      <thead><tr><th style="width:70px;">选择</th><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>当前{{ '填报' if round and round.RULE=='multi_wish' else '报名' }}人数</th>
+        {% if round and round.RULE=='multi_wish' %}<th>志愿序号</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for t in topics %}
+        <tr>
+          <td><input type="checkbox" name="wishes" value="1:{{ t.TOPIC_CODE }}" onchange="syncWish(this)"></td>
+          <td>{{ t.TOPIC_CODE }}</td>
+          <td>{{ t.TOPIC_NAME }}</td>
+          <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
+          <td>{{ t.DIFFICULTY }}</td>
+          <td>{{ t.MAX_NUM }}</td>
+          <td>{{ counts.get(t.ID, 0) }}</td>
+          {% if round and round.RULE=='multi_wish' %}
+          <td><input type="number" min="1" max="{{ round.MAX_WISH }}" value="1" style="width:60px;"
+                     class="wish-no" data-code="{{ t.TOPIC_CODE }}" oninput="updateWishValue(this)"></td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <input type="hidden" id="max-wish" value="{{ round.MAX_WISH if round else 3 }}">
+    <button class="btn btn-primary" style="margin-top:14px;" type="submit">提交{{ '志愿' if round and round.RULE=='multi_wish' else '报名' }}</button>
+  </form>
+  <p class="flow-tip">提示：勾选题目后，多志愿模式可在"志愿序号"列调整优先级（1 = 最想去）；抽签模式直接勾选报名即可。</p>
+  {% endif %}
+</div>
+
+<script>
+// 勾选状态与志愿序号输入联动：只有勾选的题目才提交
+function syncWish(cb) {
+  const row = cb.closest('tr');
+  const noInput = row.querySelector('.wish-no');
+  if (noInput) noInput.disabled = !cb.checked;
+}
+function updateWishValue(input) {
+  const row = input.closest('tr');
+  const cb = row.querySelector('input[type=checkbox]');
+  cb.value = (input.value || 1) + ':' + input.dataset.code;
+}
+function checkWishes() {
+  const checked = document.querySelectorAll('input[name=wishes]:checked');
+  const max = parseInt(document.getElementById('max-wish').value || '3', 10);
+  if (checked.length === 0) { alert('请至少选择 1 项'); return false; }
+  if (checked.length > max) { alert('最多只能选择 ' + max + ' 项'); return false; }
+  return true;
+}
+document.querySelectorAll('.wish-no').forEach(i => i.disabled = true);
+</script>
+{% endblock %}

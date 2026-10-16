@@ -1,4 +1,4 @@
-"""数据库连接、初始化与种子数据"""
+"""数据库连接、初始化、迁移与种子数据"""
 import os
 import sqlite3
 from datetime import datetime
@@ -14,13 +14,44 @@ def now_str():
 
 
 def get_conn():
-    """返回连接：WAL 模式 + 立即事务，保证并发写安全"""
+    """返回连接：WAL 模式 + 手动事务，保证并发写安全"""
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.isolation_level = None  # 手动控制事务
+    conn.isolation_level = None
     return conn
+
+
+def _columns(conn, table):
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def migrate(conn):
+    """轻量迁移：老库缺少的列/表在此补齐，保留历史数据"""
+    user_cols = _columns(conn, "USERS")
+    if "STATUS" not in user_cols:
+        conn.execute("ALTER TABLE USERS ADD COLUMN STATUS TEXT DEFAULT 'active'")
+    round_cols = _columns(conn, "ROUNDS")
+    for col, ddl in [
+        ("PROMOTE_MODE", "TEXT DEFAULT 'auto'"),
+        ("MAX_WISH", "INTEGER DEFAULT 3"),
+        ("LOTTERY_SEED", "TEXT"),
+        ("ALLOW_CLASSES", "TEXT"),
+    ]:
+        if col not in round_cols:
+            conn.execute(f"ALTER TABLE ROUNDS ADD COLUMN {col} {ddl}")
+    sel_cols = _columns(conn, "SELECTIONS")
+    if "WISH_NO" not in sel_cols:
+        conn.execute("ALTER TABLE SELECTIONS ADD COLUMN WISH_NO INTEGER")
+    conn.execute("""CREATE TABLE IF NOT EXISTS SELECTION_EVENTS (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        ROUND_ID INTEGER NOT NULL, TOPIC_ID INTEGER, USER_ID INTEGER,
+        ACTION TEXT NOT NULL, FROM_STATUS TEXT, TO_STATUS TEXT,
+        WISH_NO INTEGER, QUEUE_NO INTEGER, OPERATOR TEXT, REMARK TEXT,
+        OPERATED_AT TEXT NOT NULL, CREATED_BY TEXT, CREATED_AT TEXT,
+        UPDATED_BY TEXT, UPDATED_AT TEXT, FLAG INTEGER DEFAULT 1)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS IDX_EVENTS_ROUND ON SELECTION_EVENTS (ROUND_ID, OPERATED_AT)")
 
 
 def init_db():
@@ -28,8 +59,17 @@ def init_db():
         schema = f.read()
     conn = get_conn()
     conn.executescript(schema)
+    migrate(conn)
     if conn.execute("SELECT COUNT(*) c FROM USERS").fetchone()["c"] == 0:
         seed(conn)
+    # 确保存在 admin 账号
+    if not conn.execute("SELECT 1 FROM USERS WHERE ROLE='admin' AND FLAG=1").fetchone():
+        ts = now_str()
+        conn.execute(
+            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,ROLE,DEPT,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES('ADMIN','admin',?,?,'admin','软件学院','active','system',?,1)",
+            (generate_password_hash("123456"), "系统管理员", ts),
+        )
     conn.close()
 
 
@@ -45,8 +85,8 @@ def seed(conn):
     ]
     for no, name, pwd, real, cls, gpa, role in users:
         conn.execute(
-            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,DEPT,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES(?,?,?,?,?,?,?,'软件学院','system',?,1)",
+            "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,DEPT,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+            " VALUES(?,?,?,?,?,?,?,'软件学院','active','system',?,1)",
             (no, name, generate_password_hash(pwd), real, cls, gpa, role, ts),
         )
     topics = [
@@ -64,13 +104,13 @@ def seed(conn):
             (code, name, desc, tag, diff, max_num, ts),
         )
     conn.execute(
-        "INSERT INTO ROUNDS(ROUND_NAME,RULE,START_AT,END_AT,WAITLIST_ON,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-        " VALUES('2026春季课设选题·第一轮','first_come','2026-03-16 08:00:00','2026-06-30 18:00:00',1,'open','system',?,1)",
+        "INSERT INTO ROUNDS(ROUND_NAME,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,MAX_WISH,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+        " VALUES('2026春季课设选题·第一轮','first_come','2026-03-16 08:00:00','2026-06-30 18:00:00',1,'auto',3,'open','system',?,1)",
         (ts,),
     )
     conn.execute(
         "INSERT INTO ANNOUNCEMENTS(TITLE,CONTENT,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
-        " VALUES('选题须知','每人限选1题；满员题目可加入候补；退选后名额自动递补给候补首位。',?,'system',?,1)",
+        " VALUES('选题须知','每人限选1题；满员题目可加入候补；退选后名额按递补策略处理。',?,'system',?,1)",
         (ts, ts),
     )
     conn.commit()

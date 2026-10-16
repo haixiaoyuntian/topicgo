@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}操作日志 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>操作日志（选题/退选/递补/分配/抽签全程留痕）</h3>
+  <form class="toolbar" method="get">
+    <input name="kw" value="{{ kw }}" placeholder="🔍 题目/姓名/学号" style="width:220px;">
+    <select name="action">
+      <option value="">全部动作</option>
+      {% for key, name in action_names.items() %}
+      <option value="{{ key }}" {{ 'selected' if action==key }}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" type="submit">查询</button>
+  </form>
+  <table>
+    <thead><tr><th>时间</th><th>动作</th><th>题目</th><th>学生</th><th>状态变化</th><th>志愿/候补</th><th>操作人</th><th>备注</th></tr></thead>
+    <tbody>
+    {% for e in events %}
+      <tr>
+        <td>{{ e.OPERATED_AT }}</td>
+        <td><span class="tag tag-blue">{{ action_names.get(e.ACTION, e.ACTION) }}</span></td>
+        <td>{{ e.TOPIC_NAME or '-' }}</td>
+        <td>{{ e.REAL_NAME or '系统' }}{{ '（'+e.USER_NO+'）' if e.USER_NO else '' }}</td>
+        <td>{{ status_names.get(e.FROM_STATUS, e.FROM_STATUS) or '无' }} → {{ status_names.get(e.TO_STATUS, e.TO_STATUS) or '-' }}</td>
+        <td>{{ ('志愿'+e.WISH_NO|string) if e.WISH_NO else ('候补'+e.QUEUE_NO|string) if e.QUEUE_NO else '-' }}</td>
+        <td>{{ e.OPERATOR }}</td>
+        <td>{{ e.REMARK or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">暂无日志记录</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="flow-tip">日志不可篡改（仅追加），是选题公平性的审计依据。最多展示最近 300 条。</p>
+</div>
+{% endblock %}

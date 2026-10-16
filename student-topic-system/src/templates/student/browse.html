@@ -2,7 +2,11 @@
 {% block title %}浏览题库 - 学生选题系统{% endblock %}
 {% block content %}
 {% if round %}
-<div class="notice">⏰ 本轮选题截止：{{ round.END_AT }}。规则：每人限选 1 题，满员后可加入候补，退选名额自动递补。</div>
+<div class="notice">⏰ 本轮选题截止：{{ round.END_AT }}｜模式：{{ rule_name }}
+  {% if round.ALLOW_CLASSES %}｜仅限班级：{{ round.ALLOW_CLASSES }}{% endif %}
+  {% if round.PROMOTE_MODE == 'auto' %}｜退选自动递补{% elif round.PROMOTE_MODE == 'manual' %}｜退选后教师手动递补{% else %}｜候补不递补{% endif %}
+</div>
+{% if not class_ok %}<div class="notice notice-red">你的班级不在本轮允许范围内，暂不能选题。</div>{% endif %}
 {% else %}
 <div class="notice notice-red">当前不在选题窗口期，请联系任课教师。</div>
 {% endif %}
@@ -20,6 +24,10 @@
       {% for d in ['较易','中等','较难'] %}<option {{ 'selected' if d==diff }}>{{ d }}</option>{% endfor %}
     </select>
     <button class="btn btn-primary" type="submit">查询</button>
+    {% if round and round.RULE in ('multi_wish','lottery') %}
+    <a class="btn btn-primary" href="{{ url_for('student_wish') }}" style="margin-left:auto;">
+      {{ '去填报志愿' if round.RULE=='multi_wish' else '去报名' }}</a>
+    {% endif %}
   </form>
   <table>
     <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>上限</th><th>已选/剩余</th><th>状态</th><th>操作</th></tr></thead>
@@ -33,11 +41,27 @@
         <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
         <td><span class="tag {{ 'tag-red' if t.DIFFICULTY=='较难' else 'tag-orange' if t.DIFFICULTY=='中等' else 'tag-green' }}">{{ t.DIFFICULTY }}</span></td>
         <td>{{ t.MAX_NUM }}</td>
-        <td>{{ picked }} / <b style="color:{{ '#ff4d4f' if left<=0 else '#52c41a' }}">{{ left }}</b></td>
-        <td>{% if left > 0 %}<span class="tag tag-green">可选题</span>{% else %}<span class="tag tag-red">已满员</span>{% endif %}</td>
         <td>
-          {% if mine %}<button class="btn btn-default btn-sm" disabled>你已选题</button>
-          {% elif not round %}<button class="btn btn-default btn-sm" disabled>未开放</button>
+          {% if round and round.RULE == 'multi_wish' %}
+            {{ wishes.get(t.ID, 0) }} 人填报
+          {% elif round and round.RULE == 'lottery' %}
+            {{ entries.get(t.ID, 0) }} 人报名
+          {% else %}
+            {{ picked }} / <b style="color:{{ '#ff4d4f' if left<=0 else '#52c41a' }}">{{ left }}</b>
+          {% endif %}
+        </td>
+        <td>
+          {% if round and round.RULE == 'lottery' %}<span class="tag tag-blue">报名中</span>
+          {% elif left > 0 %}<span class="tag tag-green">可选题</span>
+          {% else %}<span class="tag tag-red">已满员</span>{% endif %}
+        </td>
+        <td>
+          {% if round and round.RULE == 'lottery' %}
+            <a class="btn btn-primary btn-sm" href="{{ url_for('student_wish') }}">报名</a>
+          {% elif round and round.RULE == 'multi_wish' %}
+            <a class="btn btn-primary btn-sm" href="{{ url_for('student_wish') }}">填志愿</a>
+          {% elif mine %}<button class="btn btn-default btn-sm" disabled>你已选题</button>
+          {% elif not round or not class_ok %}<button class="btn btn-default btn-sm" disabled>不可选</button>
           {% elif left > 0 %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
             <button class="btn btn-primary btn-sm" onclick="return confirm('确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>

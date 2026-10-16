@@ -3,16 +3,37 @@
 {% block content %}
 <div class="stat-cards">
   <div class="stat-card"><div class="num">{{ rows|length }}</div><div class="label">题目总数</div></div>
-  <div class="stat-card"><div class="num">{{ total_picked }}</div><div class="label">已选人数</div></div>
+  <div class="stat-card"><div class="num">{{ total_picked }}</div><div class="label">已确认人数</div></div>
   <div class="stat-card"><div class="num">{{ total_left }}</div><div class="label">剩余名额</div></div>
   <div class="stat-card"><div class="num">{{ wait_total }}</div><div class="label">候补人数</div></div>
+  <div class="stat-card"><div class="num">{{ wish_total + entry_total }}</div><div class="label">待分配/待抽签</div></div>
 </div>
+
+{% if round and round.RULE == 'multi_wish' %}
+<div class="card">
+  <h3>策略执行：多志愿分配</h3>
+  <p class="flow-tip">当前有 {{ wish_total }} 条志愿记录待分配。分配规则：按志愿序号依次处理，同志愿超员按绩点优先；未命中任何志愿者转第一志愿候补。分配后动作全部写日志。</p>
+  <form method="post" action="{{ url_for('teacher_allocate') }}" onsubmit="return confirm('确认执行统一分配？分配后不可撤销。')">
+    <button class="btn btn-primary">执行志愿分配</button>
+  </form>
+</div>
+{% elif round and round.RULE == 'lottery' %}
+<div class="card">
+  <h3>策略执行：随机抽签</h3>
+  <p class="flow-tip">当前有 {{ entry_total }} 条报名记录。种子：<b>{{ round.LOTTERY_SEED or '自动生成' }}</b>。
+  种子将向全员公开，任何人都能用该种子复现验证抽签结果，保证公平可审计。</p>
+  <form method="post" action="{{ url_for('teacher_lottery') }}" onsubmit="return confirm('确认执行抽签？结果不可撤销。')">
+    <button class="btn btn-primary">执行公开抽签</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <h3>实时选题情况
     <a class="btn btn-default btn-sm" style="float:right;" href="{{ url_for('teacher_export') }}">导出 CSV</a>
   </h3>
   <table>
-    <thead><tr><th>编号</th><th>题目</th><th>进度</th><th>已选/上限</th><th>候补人数</th></tr></thead>
+    <thead><tr><th>编号</th><th>题目</th><th>进度</th><th>已确认/上限</th><th>候补</th><th>待分配</th></tr></thead>
     <tbody>
     {% for r in rows %}
       {% set pct = (r.picked / r.topic.MAX_NUM * 100)|round|int %}
@@ -22,9 +43,37 @@
         <td><div class="progress {{ 'full' if r.left<=0 }}"><div style="width:{{ pct }}%"></div></div></td>
         <td>{{ r.picked }} / {{ r.topic.MAX_NUM }}</td>
         <td>{{ r.waiting }}</td>
+        <td>{{ r.wish + r.entry }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% if waiters %}
+<div class="card">
+  <h3>候补名单（可手动递补）</h3>
+  <table>
+    <thead><tr><th>题目</th><th>候补序号</th><th>学号</th><th>姓名</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for topic_id, ws in waiters.items() %}
+      {% for w in ws %}
+      <tr>
+        <td>{{ w.TOPIC_NAME }}</td>
+        <td>{{ w.QUEUE_NO }}</td>
+        <td>{{ w.USER_NO }}</td>
+        <td>{{ w.REAL_NAME }}</td>
+        <td>
+          <form method="post" action="{{ url_for('teacher_manual_promote', selection_id=w.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认手动递补该同学？')">
+            <button class="btn btn-primary btn-sm">递补</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

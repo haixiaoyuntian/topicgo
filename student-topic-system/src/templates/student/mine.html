@@ -2,23 +2,28 @@
 {% block title %}我的选题 - 学生选题系统{% endblock %}
 {% block content %}
 <div class="card">
-  <h3>我的选题{% if round %}（{{ round.ROUND_NAME }}）{% endif %}</h3>
-  {% if rows %}
+  <h3>我的选题{% if round %}（{{ round.ROUND_NAME }} · {{ rule_name }}）{% endif %}</h3>
+  {% if active %}
   <table>
-    <thead><tr><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
+    <thead><tr><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>志愿/候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
     <tbody>
-    {% for r in rows %}
+    {% for r in active %}
       <tr>
         <td>{{ r.TOPIC_CODE }}</td>
         <td>{{ r.TOPIC_NAME }}</td>
         <td>{{ r.MAX_NUM }}</td>
-        <td>{% if r.STATUS=='confirmed' %}<span class="tag tag-green">已确认</span>{% else %}<span class="tag tag-orange">候补中</span>{% endif %}</td>
-        <td>{{ r.QUEUE_NO or '-' }}</td>
+        <td>
+          {% if r.STATUS=='confirmed' %}<span class="tag tag-green">已确认</span>
+          {% elif r.STATUS=='waiting' %}<span class="tag tag-orange">候补中</span>
+          {% elif r.STATUS=='wish' %}<span class="tag tag-blue">志愿待分配</span>
+          {% else %}<span class="tag tag-blue">已报名待抽签</span>{% endif %}
+        </td>
+        <td>{{ r.WISH_NO or r.QUEUE_NO or '-' }}</td>
         <td>{{ r.SELECTED_AT }}</td>
         <td>
-          {% if r.STATUS=='confirmed' %}
+          {% if r.STATUS in ('confirmed','waiting') %}
           <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
-                onsubmit="return confirm('确认退选？名额将递补给候补首位同学。')">
+                onsubmit="return confirm('确认退选？退选记录将保留，名额按递补策略处理。')">
             <button class="btn btn-danger btn-sm">退选</button>
           </form>
           {% else %}-{% endif %}
@@ -28,7 +33,30 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty">暂未选题，请前往「浏览题库」选题。</p>
+  <p class="empty">暂无有效选题记录。请前往「浏览题库」选题，或「志愿填报」提交志愿。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>历史记录（含退选痕迹）</h3>
+  {% if history %}
+  <table>
+    <thead><tr><th>编号</th><th>题目名称</th><th>状态</th><th>选题时间</th><th>退选时间</th></tr></thead>
+    <tbody>
+    {% for r in history %}
+      <tr>
+        <td>{{ r.TOPIC_CODE }}</td>
+        <td>{{ r.TOPIC_NAME }}</td>
+        <td><span class="tag tag-red">已退选</span></td>
+        <td>{{ r.SELECTED_AT }}</td>
+        <td>{{ r.CANCELLED_AT }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="flow-tip">退选记录永久保留，教师可在「操作日志」中核查每一次选题与退选动作。</p>
+  {% else %}
+  <p class="empty">暂无退选记录。</p>
   {% endif %}
 </div>
 {% endblock %}

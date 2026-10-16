@@ -7,20 +7,35 @@
   <form method="post" class="vform">
     <input type="hidden" name="round_id" value="{{ round.ID }}">
     <div class="form-item"><label>轮次名称</label><input name="round_name" value="{{ round.ROUND_NAME }}" required></div>
-    <div class="form-item"><label>选题规则</label>
-      <select name="rule">
-        <option value="first_come" {{ 'selected' if round.RULE=='first_come' }}>先到先得（实时锁定名额）</option>
-        <option value="gpa_priority" {{ 'selected' if round.RULE=='gpa_priority' }}>绩点优先（按绩点排名依次选择）</option>
+    <div class="form-item"><label>选题策略（公平性维度）</label>
+      <select name="rule" id="rule-select" onchange="toggleRuleFields()">
+        {% for key, name in rule_names.items() %}
+        <option value="{{ key }}" {{ 'selected' if round.RULE==key }}>{{ name }}</option>
+        {% endfor %}
       </select>
+      <p class="flow-tip" id="rule-desc"></p>
     </div>
     <div class="form-item"><label>选题开始时间</label><input name="start_at" value="{{ round.START_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
     <div class="form-item"><label>选题截止时间</label><input name="end_at" value="{{ round.END_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
-    <div class="form-item"><label>候补递补</label>
+    <div class="form-item"><label>候补开关</label>
       <select name="waitlist_on">
-        <option value="1" {{ 'selected' if round.WAITLIST_ON }}>开启（有人退选自动递补）</option>
+        <option value="1" {{ 'selected' if round.WAITLIST_ON }}>开启（满员可入候补）</option>
         <option value="0" {{ 'selected' if not round.WAITLIST_ON }}>关闭</option>
       </select>
     </div>
+    <div class="form-item"><label>递补方式</label>
+      <select name="promote_mode">
+        <option value="auto" {{ 'selected' if round.PROMOTE_MODE=='auto' }}>自动递补（退选后候补首位立即递补）</option>
+        <option value="manual" {{ 'selected' if round.PROMOTE_MODE=='manual' }}>教师手动递补（更审慎，防恶意退选）</option>
+        <option value="off" {{ 'selected' if round.PROMOTE_MODE=='off' }}>不递补</option>
+      </select>
+    </div>
+    <div class="form-item" id="wish-field"><label>每人志愿数（多志愿模式）</label>
+      <input name="max_wish" type="number" min="1" max="5" value="{{ round.MAX_WISH }}"></div>
+    <div class="form-item" id="seed-field"><label>抽签种子（随机抽签模式，公开可复现）</label>
+      <input name="lottery_seed" value="{{ round.LOTTERY_SEED or '' }}" placeholder="留空则按轮次自动生成；公布后任何人可复现验证"></div>
+    <div class="form-item"><label>分组轮选：允许选题的班级（逗号分隔，留空不限）</label>
+      <input name="allow_classes" value="{{ round.ALLOW_CLASSES or '' }}" placeholder="如：软工2301,软工2302"></div>
     <div class="form-item"><label>轮次状态</label>
       <select name="status">
         <option value="open" {{ 'selected' if round.STATUS=='open' }}>开放</option>
@@ -33,4 +48,20 @@
   <p class="empty">尚未创建选题轮次。</p>
   {% endif %}
 </div>
+
+<script>
+const RULE_DESC = {
+  first_come: '先到先得：窗口内实时抢占，考验手速，系统事务保证不超卖。',
+  gpa_priority: '绩点优先：按绩点排名依次放行，高绩点同学先选，兼顾学业表现。',
+  multi_wish: '多志愿分配：每人填多个志愿，结束后统一分配，同志愿超员按绩点优先，未命中转候补。',
+  lottery: '随机抽签：窗口内自由报名不限名额，结束后用公开种子随机抽签，结果可复现、可审计。'
+};
+function toggleRuleFields() {
+  const rule = document.getElementById('rule-select').value;
+  document.getElementById('rule-desc').innerText = RULE_DESC[rule] || '';
+  document.getElementById('wish-field').style.display = rule === 'multi_wish' ? 'block' : 'none';
+  document.getElementById('seed-field').style.display = rule === 'lottery' ? 'block' : 'none';
+}
+toggleRuleFields();
+</script>
 {% endblock %}

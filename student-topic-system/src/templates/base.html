@@ -12,26 +12,36 @@
     {% if session.role == 'student' %}
     <div class="menu-group">学生功能</div>
     <a class="menu-item {{ 'active' if request.endpoint=='student_browse' }}" href="{{ url_for('student_browse') }}">📋 浏览题库</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_wish' }}" href="{{ url_for('student_wish') }}">📝 志愿填报</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_mine' }}" href="{{ url_for('student_mine') }}">✅ 我的选题</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_public' }}" href="{{ url_for('student_public') }}">📢 结果公示</a>
-    {% else %}
+    {% elif session.role == 'teacher' %}
     <div class="menu-group">教师功能</div>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_logs' }}" href="{{ url_for('teacher_logs') }}">🧾 操作日志</a>
+    {% else %}
+    <div class="menu-group">系统管理</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='admin_users' }}" href="{{ url_for('admin_users') }}">👥 用户管理</a>
+    <div class="menu-group">选题业务</div>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_logs' }}" href="{{ url_for('teacher_logs') }}">🧾 操作日志</a>
     {% endif %}
   </aside>
   <div class="main">
     <header class="topbar">
       <div>
-        {% if round %}
-        <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' }}模式</span>
+        {% if round is defined and round %}
+        <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' if round.RULE=='gpa_priority' else '多志愿分配' if round.RULE=='multi_wish' else '随机抽签' }}模式</span>
         {% else %}
         <span class="tag tag-red">● 当前无开放选题轮次</span>
         {% endif %}
       </div>
       <div>
-        <span class="role-tag">{{ '学生' if session.role=='student' else '教师' }}</span>
+        <span class="role-tag">{{ '学生' if session.role=='student' else '教师' if session.role=='teacher' else '管理员' }}</span>
         <span class="user">{{ session.real_name }}</span>
         <a class="logout" href="{{ url_for('logout') }}">退出</a>
       </div>
