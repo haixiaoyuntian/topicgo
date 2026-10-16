@@ -43,6 +43,7 @@
   .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
   .shot { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fafafa; }
   .shot .ph { height: 220px; display: flex; align-items: center; justify-content: center; color: #aab; font-size: 14px; background: repeating-linear-gradient(45deg,#f5f7fa,#f5f7fa 12px,#eef2f6 12px,#eef2f6 24px); }
+  .shot img { width: 100%; display: block; border-bottom: 1px solid #eee; }
   .shot .cap { padding: 12px 16px; font-size: 14px; background: #fff; border-top: 1px solid #eee; }
 
   /* 表格 */
@@ -107,13 +108,16 @@
 <section id="shots">
   <div class="container">
     <h2>系统截图</h2>
-    <p class="sub">以下为核心界面截图（点击可查看原型演示）</p>
+    <p class="sub">线上系统真实截图（由 tests/take_screenshots.py 自动生成）</p>
     <div class="shots">
-      <div class="shot"><div class="ph">[ 截图 ] 学生端 · 浏览题库</div><div class="cap">题目列表 + 实时剩余名额 + 搜索筛选</div></div>
-      <div class="shot"><div class="ph">[ 截图 ] 学生端 · 我的选题</div><div class="cap">选题状态确认 / 候补序号 / 一键退选</div></div>
-      <div class="shot"><div class="ph">[ 截图 ] 教师端 · 题库维护</div><div class="cap">题目增删改查与人数上限设置</div></div>
-      <div class="shot"><div class="ph">[ 截图 ] 教师端 · 选题监控</div><div class="cap">实时统计卡片 + 进度条 + CSV 导出</div></div>
+      <div class="shot"><img src="/screenshots/02-student-home.png" alt="学生首页"><div class="cap">学生首页：待办 / 倒计时 / 老师公告</div></div>
+      <div class="shot"><img src="/screenshots/03-student-browse.png" alt="浏览题库"><div class="cap">浏览题库：实时名额 + 面向班级 + 筛选</div></div>
+      <div class="shot"><img src="/screenshots/04-teacher-home.png" alt="教师工作台"><div class="cap">教师工作台：班级卡片 + 学生选题进度</div></div>
+      <div class="shot"><img src="/screenshots/06-teacher-round.png" alt="选题轮次"><div class="cap">选题轮次：四种策略 + 递补方式 + 班级范围</div></div>
+      <div class="shot"><img src="/screenshots/08-admin-users.png" alt="用户管理"><div class="cap">管理员：用户登记 / 分配指导教师 / 停用</div></div>
+      <div class="shot"><img src="/screenshots/09-prototype-student.png" alt="原型演示"><div class="cap">原型演示：高保真可交互原型（学生端）</div></div>
     </div>
+    <p style="text-align:center;margin-top:20px;"><a href="/guide">查看图文版使用流程 →</a></p>
   </div>
 </section>
 
@@ -148,13 +152,11 @@
 <section id="team">
   <div class="container">
     <h2>开发团队</h2>
-    <p class="sub">《软件工程》实践课程 · 项目小组</p>
+    <p class="sub">《软件工程》实践课程 · 项目小组（2 人）</p>
     <table>
       <tr><th>姓名</th><th>角色</th><th>项目分工</th></tr>
-      <tr><td>张明</td><td>组长 / 后端开发</td><td>项目管理、系统架构、选题核心逻辑、登录认证</td></tr>
-      <tr><td>李琪</td><td>产品经理 / 文档</td><td>需求分析、原型设计、文档与发布网页</td></tr>
-      <tr><td>王浩</td><td>前端 / 后端开发</td><td>页面开发、数据库设计、题库与监控模块</td></tr>
-      <tr><td>赵雪</td><td>测试工程师 / 运维</td><td>测试计划与用例、并发测试、发布与用户反馈</td></tr>
+      <tr><td>学生1</td><td>组长 / 后端开发</td><td>项目管理、系统架构、选题核心算法、权限与策略执行、测试</td></tr>
+      <tr><td>学生2</td><td>产品 / 前端 / 文档</td><td>需求分析、原型与页面开发、文档撰写、发布与用户反馈</td></tr>
     </table>
     <p style="text-align:center;margin-top:28px;font-size:14px;color:#666;">📮 用户反馈：欢迎通过 Gitee Issue 或邮件提交使用反馈，我们会认真分析每一条建议！</p>
   </div>

@@ -45,7 +45,7 @@ for i in range(1, 13):
         "INSERT INTO USERS(USER_NO,USER_NAME,PASSWORD_HASH,REAL_NAME,CLASS_NAME,GPA,ROLE,ADVISOR_ID,STATUS,CREATED_BY,CREATED_AT,FLAG)"
         " VALUES(?,?,?,?,?,?,'student',(SELECT ID FROM USERS WHERE USER_NAME=?),'active','demo',?,1)",
         (f"DEMO_S{i:02d}", f"demo_s{i}", generate_password_hash("123456"),
-         f"学生{i}", cls, round(2.8 + i * 0.08, 2), advisor, ts))
+         f"演示学生{i}", cls, round(2.8 + i * 0.08, 2), advisor, ts))
 
 # 王老师课题：A班专属 + 公共
 conn.execute(

@@ -1166,5 +1166,11 @@ def guide_page():
     return send_file(os.path.join(PROJECT_ROOT, "website", "flow.html"))
 
 
+@app.route("/screenshots/<path:filename>")
+def screenshots(filename):
+    """文档截图（供项目主页展示）"""
+    return send_file(os.path.join(PROJECT_ROOT, "wiki", "screenshots", filename))
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

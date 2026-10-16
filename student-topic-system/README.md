@@ -33,7 +33,8 @@ student-topic-system/
 │   ├── test_concurrent_select.py  # 并发选题防超卖测试
 │   ├── test_regression.py         # 全功能回归测试（53 项断言）
 │   ├── test_e2e_multi_user.py     # 多用户协同 E2E 测试（22 项断言）
-│   └── demo_seed.py               # 演示数据生成（多人同时登录测试）
+│   ├── demo_seed.py               # 演示数据生成（多人同时登录测试）
+│   └── take_screenshots.py        # 自动截取系统页面截图（文档配图）
 └── website/
     ├── index.html              # 项目介绍网页（Gitee Pages 发布）
     └── flow.html               # 图文版使用流程引导页（学生/教师双视角）
@@ -94,7 +95,5 @@ python ../tests/demo_seed.py                # 生成多人演示账号
 
 | 成员 | 角色 |
 | --- | --- |
-| 张明 | 组长 / 后端开发 |
-| 李琪 | 产品经理 / 文档 |
-| 王浩 | 前端 / 后端开发 |
-| 赵雪 | 测试工程师 / 运维 |
+| 学生1 | 组长 / 后端开发（架构、选题算法、权限策略、测试） |
+| 学生2 | 产品 / 前端 / 文档（需求、原型、页面、发布） |

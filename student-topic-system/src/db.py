@@ -85,11 +85,11 @@ def init_db():
 def seed(conn):
     ts = now_str()
     users = [
-        ("20230101", "zhangsan", "123456", "张明", "软工2301", 3.8, "student"),
-        ("20230102", "lisi", "123456", "李琪", "软工2301", 3.2, "student"),
-        ("20230103", "wangwu", "123456", "王浩", "软工2302", 3.9, "student"),
-        ("20230104", "zhaoliu", "123456", "赵雪", "软工2302", 3.5, "student"),
-        ("20230105", "chenqi", "123456", "陈琦", "软工2301", 2.9, "student"),
+        ("20230101", "zhangsan", "123456", "同学A", "软工2301", 3.8, "student"),
+        ("20230102", "lisi", "123456", "同学B", "软工2301", 3.2, "student"),
+        ("20230103", "wangwu", "123456", "同学C", "软工2302", 3.9, "student"),
+        ("20230104", "zhaoliu", "123456", "同学D", "软工2302", 3.5, "student"),
+        ("20230105", "chenqi", "123456", "同学E", "软工2301", 2.9, "student"),
         ("T2001", "teacher", "123456", "刘老师", None, 0, "teacher"),
     ]
     # 刘老师(T2001)的工号为 6，学生默认绑定到刘老师
@@ -118,7 +118,7 @@ def seed(conn):
     if teacher:
         conn.execute(
             "INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,MAX_WISH,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES('2026春季课设选题·第一轮',?,'first_come','2026-03-16 08:00:00','2026-06-30 18:00:00',1,'auto',3,'open','system',?,1)",
+            " VALUES('2026秋季课设选题·第一轮',?,'first_come','2026-09-01 08:00:00','2026-12-31 18:00:00',1,'auto',3,'open','system',?,1)",
             (teacher["ID"], ts),
         )
     conn.execute(
