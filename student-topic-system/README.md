@@ -49,8 +49,11 @@ python app.py
 # 浏览器访问 http://localhost:5000
 ```
 
-在线体验（临时公网地址）：https://building-weeks-give-herein.trycloudflare.com
+在线体验（临时公网地址，2026-10-23 重建）：https://newman-where-jackie-involvement.trycloudflare.com
 （系统内还提供 项目主页 `/home`、原型演示 `/prototype`、使用流程 `/guide`）
+
+> 公网地址为 Cloudflare 临时隧道，服务重启后会失效。本地测试请 `cd src && python app.py` 后访问 http://localhost:5000；
+> 重建公网隧道：启动服务后执行 `cloudflared tunnel --url http://127.0.0.1:5000`，把输出的 trycloudflare.com 地址替换上文即可。
 
 ## 角色与数据归属
 
