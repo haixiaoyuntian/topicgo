@@ -24,7 +24,7 @@
     <button class="btn btn-primary" type="submit">查询</button>
   </form>
   <table>
-    <thead><tr><th>学号</th><th>姓名</th><th>班级</th><th>绩点</th><th>选题状态</th><th>志愿/候补序号</th><th>课题</th><th>选题时间</th></tr></thead>
+    <thead><tr><th>学号</th><th>姓名</th><th>班级</th><th>绩点</th><th>选题状态</th><th>志愿/候补序号</th><th>课题</th><th>退选次数</th><th>选题时间</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr class="{{ 'row-warn' if r.status=='none' }}">
@@ -41,13 +41,20 @@
         </td>
         <td>{{ r.sel.WISH_NO or r.sel.QUEUE_NO or '-' if r.sel else '-' }}</td>
         <td>{{ r.sel.TOPIC_NAME if r.sel else '-' }}</td>
+        <td>
+          {% if r.cancel_max %}
+            {{ r.cancel_used }}/{{ r.cancel_max }}
+            {% if r.cancel_used >= r.cancel_max %}<span class="tag tag-red">已用尽</span>{% endif %}
+          {% else %}不限{% endif %}
+        </td>
         <td>{{ r.sel.SELECTED_AT if r.sel else '-' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="8" class="empty">暂无学生</td></tr>
+      <tr><td colspan="9" class="empty">暂无学生</td></tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。</p>
+  <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。
+    「退选次数」显示 已用/上限，用尽的学生如需再退选会联系你；撤销学生误提交的志愿不计入其次数。</p>
 </div>
 {% endblock %}

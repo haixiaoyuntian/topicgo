@@ -185,7 +185,7 @@ print("\n== 5. 退选与递补 ==")
 conf_sel = sql("SELECT s.ID, u.USER_NAME FROM SELECTIONS s JOIN USERS u ON u.ID=s.USER_ID"
                " WHERE s.TOPIC_ID=? AND s.STATUS='confirmed' ORDER BY s.ID LIMIT 1", (tp01,))
 if conf_sel:
-    post(login(conf_sel[0]["USER_NAME"]), f"/student/cancel/{conf_sel[0]['ID']}")
+    post(login(conf_sel[0]["USER_NAME"]), f"/student/cancel/{conf_sel[0]['ID']}", data={"reason": "选错了，想换题"})
 conf = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS='confirmed'", (tp01,))[0]["c"]
 cancelled = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS='cancelled'", (tp01,))[0]["c"]
 check("退选后仍为2人确认（候补递补）", conf == 2, f"conf={conf}")

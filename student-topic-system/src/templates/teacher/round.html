@@ -12,6 +12,7 @@
       <p>③ <b>多志愿分配</b>：学生填多个志愿，你在监控页点「执行志愿分配」统一分配；同志愿超员按绩点优先，未命中转候补。</p>
       <p>④ <b>随机抽签</b>：学生自由报名，你点「执行公开抽签」；种子建议填写并向全班公布，任何人可复现验证，公平性最强。</p>
       <p><b>递补方式：</b>自动递补（退选立即递补候补首位）／教师手动递补（更审慎，防恶意退选）／不递补。</p>
+      <p><b>防反复退选：</b>「退选次数上限」限制每人每轮最多退选几次（教师撤销不计入学生次数）；「截止前禁止退选」避免临近截止恶意退选导致名额空置。退选必须选择原因，写入操作日志供审计。</p>
       <p><b>分组轮选：</b>「允许选题的班级」可限制本轮仅特定班级参与（如第一轮只开放软工2301）。</p>
       <p><b>多轮次：</b>可以创建多个轮次（如第一轮/补选轮），系统始终以<b>最新创建</b>的轮次为当前轮次；历史轮次可在下方列表中查看。</p>
     </div>
@@ -52,6 +53,14 @@
     <input name="max_wish" type="number" min="1" max="5" value="{{ r.MAX_WISH if r else 3 }}"></div>
   <div class="form-item seed-field"><label>抽签种子（随机抽签模式，公开可复现）</label>
     <input name="lottery_seed" value="{{ r.LOTTERY_SEED if r and r.LOTTERY_SEED else '' }}" placeholder="留空则按轮次自动生成；公布后任何人可复现验证"></div>
+  <div class="form-item"><label>每轮退选次数上限（防反复退选）</label>
+    <input name="max_cancel" type="number" min="0" max="10" value="{{ r.MAX_CANCEL if r and r.MAX_CANCEL is not none else 2 }}">
+    <p class="flow-tip">每人每轮最多退选几次（0=不限）；用完后需联系教师。教师撤销不计入学生次数。</p>
+  </div>
+  <div class="form-item"><label>截止前禁止退选（小时）</label>
+    <input name="cancel_lock_hours" type="number" min="0" max="72" value="{{ r.CANCEL_LOCK_HOURS if r and r.CANCEL_LOCK_HOURS is not none else 2 }}">
+    <p class="flow-tip">轮次截止前多少小时内不允许退选（0=不限），避免名额在截止后空置、候补无法递补。</p>
+  </div>
   <div class="form-item"><label>分组轮选：允许选题的班级</label>
     <div class="ms" data-all-label="不限班级" title="不选=不限班级">
       <button type="button" class="ms-toggle">允许班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
@@ -103,7 +112,7 @@
 <div class="card">
   <h3>我的轮次（共 {{ rounds|length }} 个，最新创建的为当前轮次）</h3>
   <table>
-    <thead><tr><th>轮次名称</th><th>策略</th><th>时间窗口</th><th>递补</th><th>允许班级</th><th>状态</th></tr></thead>
+    <thead><tr><th>轮次名称</th><th>策略</th><th>时间窗口</th><th>递补</th><th>退选上限</th><th>允许班级</th><th>状态</th></tr></thead>
     <tbody>
     {% for r in rounds %}
       <tr>
@@ -111,6 +120,7 @@
         <td>{{ rule_names.get(r.RULE, r.RULE) }}</td>
         <td>{{ r.START_AT }} ~ {{ r.END_AT }}</td>
         <td>{% if r.PROMOTE_MODE=='auto' %}自动{% elif r.PROMOTE_MODE=='manual' %}手动{% else %}不递补{% endif %}</td>
+        <td>{% if not r.MAX_CANCEL %}不限{% else %}{{ r.MAX_CANCEL }} 次{% endif %}{% if r.CANCEL_LOCK_HOURS %}<span class="tag tag-orange">截止前{{ r.CANCEL_LOCK_HOURS }}h禁退</span>{% endif %}</td>
         <td>{% if not r.ALLOW_CLASSES %}<span class="tag tag-green">不限</span>{% else %}{{ r.ALLOW_CLASSES }}{% endif %}</td>
         <td>{% if r.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
       </tr>

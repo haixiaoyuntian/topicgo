@@ -3,6 +3,10 @@
 {% block content %}
 <div class="card">
   <h3>我的选题{% if round %}（{{ round.ROUND_NAME }} · {{ rule_name }}）{% endif %}</h3>
+  {% if cancel_max > 0 %}
+  <p class="flow-tip">🔁 防反复退选：本轮每人最多退选 {{ cancel_max }} 次，你已使用 <b>{{ cancel_used }}</b> 次（剩余 {{ cancel_max - cancel_used }} 次）；
+    {% if round.CANCEL_LOCK_HOURS %}截止前 {{ round.CANCEL_LOCK_HOURS }} 小时内不可退选；{% endif %}次数用完后如需退选请联系任课教师。</p>
+  {% endif %}
   {% if active %}
   <table>
     <thead><tr><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>志愿/候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
@@ -25,6 +29,10 @@
           <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
                 onsubmit="return confirm('确认退选？退选记录将保留，名额按递补策略处理。')">
             {{ csrf_input() }}
+            <select name="reason" required style="width:150px;">
+              <option value="">退选原因（必选）</option>
+              {% for rs in cancel_reasons %}<option value="{{ rs }}">{{ rs }}</option>{% endfor %}
+            </select>
             <button class="btn btn-danger btn-sm">退选</button>
           </form>
           {% else %}-{% endif %}

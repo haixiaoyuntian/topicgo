@@ -39,6 +39,8 @@ def migrate(conn):
         ("MAX_WISH", "INTEGER DEFAULT 3"),
         ("LOTTERY_SEED", "TEXT"),
         ("ALLOW_CLASSES", "TEXT"),
+        ("MAX_CANCEL", "INTEGER DEFAULT 2"),
+        ("CANCEL_LOCK_HOURS", "INTEGER DEFAULT 2"),
     ]:
         if col not in round_cols:
             conn.execute(f"ALTER TABLE ROUNDS ADD COLUMN {col} {ddl}")

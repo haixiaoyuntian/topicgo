@@ -16,6 +16,7 @@ import os
 import random
 import secrets
 import sqlite3
+from datetime import datetime, timedelta
 from functools import wraps
 from urllib.parse import quote, urlparse
 
@@ -77,6 +78,29 @@ ACTION_NAMES = {
     "allocate": "志愿分配",
     "lottery": "抽签",
 }
+# 退选原因（必选，写入操作日志，便于教师审计）
+CANCEL_REASONS = [
+    "选错了，想换题",
+    "题目难度或方向不适合",
+    "与其它课程/安排冲突",
+    "经与指导教师沟通后退选",
+]
+
+
+def parse_dt(s):
+    """解析 'YYYY-MM-DD HH:MM:SS' 时间串，失败返回 None"""
+    try:
+        return datetime.strptime(s or "", "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
+def student_cancel_used(conn, round_id, user_id, user_name):
+    """该生在本轮已使用的退选次数（只统计学生本人发起的退选，教师撤销不计入）"""
+    return conn.execute(
+        "SELECT COUNT(*) c FROM SELECTION_EVENTS"
+        " WHERE ROUND_ID=? AND USER_ID=? AND ACTION='cancel' AND OPERATOR=?",
+        (round_id, user_id, user_name)).fetchone()["c"]
 STATUS_NAMES = {
     "confirmed": "已确认",
     "waiting": "候补中",
@@ -507,6 +531,28 @@ def student_cancel(selection_id):
         conn.close()
         return redirect(url_for("student_mine"))
     rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (sel["ROUND_ID"],)).fetchone()
+    # 方案2：每轮退选次数上限（教师撤销不计入学生次数）
+    max_cancel = (rnd["MAX_CANCEL"] or 0) if rnd else 0
+    if max_cancel > 0:
+        used = student_cancel_used(conn, sel["ROUND_ID"], session["user_id"], session["user_name"])
+        if used >= max_cancel:
+            flash(f"本轮退选次数已用完（上限 {max_cancel} 次），如需再退选请联系任课教师", "error")
+            conn.close()
+            return redirect(url_for("student_mine"))
+    # 方案4：截止前禁止退选，避免名额在截止后空置
+    lock_hours = (rnd["CANCEL_LOCK_HOURS"] or 0) if rnd else 0
+    if lock_hours > 0:
+        end = parse_dt(rnd["END_AT"]) if rnd else None
+        if end and datetime.now() > end - timedelta(hours=lock_hours):
+            flash(f"截止前 {lock_hours} 小时内不能退选，如需退选请联系任课教师", "error")
+            conn.close()
+            return redirect(url_for("student_mine"))
+    # 方案4：退选原因必选（写入日志，便于审计）
+    reason = request.form.get("reason", "").strip()
+    if reason not in CANCEL_REASONS:
+        flash("请选择退选原因", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
     ts = now_str()
     conn.execute("BEGIN IMMEDIATE")
     # 1) 原记录置为 cancelled（保留历史，不删除）
@@ -516,7 +562,8 @@ def student_cancel(selection_id):
         (ts, session["user_name"], ts, selection_id))
     log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "cancel",
               sel["STATUS"], "cancelled", wish_no=sel["WISH_NO"],
-              queue_no=sel["QUEUE_NO"], operator=session["user_name"])
+              queue_no=sel["QUEUE_NO"], operator=session["user_name"],
+              remark=f"学生退选（原因：{reason}）")
     promoted = None
     # 2) 仅"已确认"退选才释放名额；候补退出不触发递补
     if sel["STATUS"] == "confirmed":
@@ -553,10 +600,17 @@ def student_mine():
         ).fetchall()
         active = [r for r in rows if r["STATUS"] in ("confirmed", "waiting", "wish", "entry")]
         history = [r for r in rows if r["STATUS"] == "cancelled"]
+    # 退选次数配额（方案2）：已用/上限，供页面提示
+    cancel_used = cancel_max = 0
+    if rnd:
+        cancel_max = rnd["MAX_CANCEL"] or 0
+        if cancel_max > 0:
+            cancel_used = student_cancel_used(conn, rnd["ID"], user["ID"], user["USER_NAME"])
     conn.close()
     return render_template("student/mine.html", active=active, history=history, round=rnd,
                            rule_name=RULE_NAMES.get(rnd["RULE"] if rnd else "", ""),
-                           status_names=STATUS_NAMES)
+                           status_names=STATUS_NAMES, cancel_reasons=CANCEL_REASONS,
+                           cancel_used=cancel_used, cancel_max=cancel_max)
 
 
 def own_round_for_student(conn, user):
@@ -656,8 +710,14 @@ def teacher_students():
     rows = []
     for s in students:
         sel = sel_map.get(s["ID"])
+        cancel_used = cancel_max = 0
+        if rnd:
+            cancel_max = rnd["MAX_CANCEL"] or 0
+            if cancel_max > 0:
+                cancel_used = student_cancel_used(conn, rnd["ID"], s["ID"], s["USER_NAME"])
         rows.append(dict(student=s, sel=sel,
-                         status=sel["STATUS"] if sel else "none"))
+                         status=sel["STATUS"] if sel else "none",
+                         cancel_used=cancel_used, cancel_max=cancel_max))
     if status_filter:
         rows = [r for r in rows if r["status"] == status_filter]
     classes = teacher_classes(conn, session["user_id"])
@@ -805,14 +865,16 @@ def teacher_round():
                 return redirect(url_for("teacher_round"))
             conn.execute(
                 "INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,"
-                "MAX_WISH,LOTTERY_SEED,ALLOW_CLASSES,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,'teacher',?,1)",
+                "MAX_WISH,LOTTERY_SEED,ALLOW_CLASSES,MAX_CANCEL,CANCEL_LOCK_HOURS,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'teacher',?,1)",
                 (name, session["user_id"], rule, start_at, end_at,
                  0 if request.form.get("waitlist_on") == "0" else 1,  # 缺省开启候补（与表默认值一致）
                  request.form.get("promote_mode", "auto"),
                  int(request.form.get("max_wish", 3) or 3),
                  request.form.get("lottery_seed", "").strip() or None,
                  request.form.get("allow_classes", "").strip() or None,
+                 int(request.form.get("max_cancel", 2) or 0),
+                 int(request.form.get("cancel_lock_hours", 2) or 0),
                  request.form.get("status", "open"), ts))
             conn.commit()
             flash(f"轮次「{name}」已创建（最新轮次即时生效）", "success")
@@ -827,12 +889,14 @@ def teacher_round():
             return redirect(url_for("teacher_round"))
         conn.execute(
             "UPDATE ROUNDS SET ROUND_NAME=?,RULE=?,START_AT=?,END_AT=?,WAITLIST_ON=?,PROMOTE_MODE=?,"
-            "MAX_WISH=?,LOTTERY_SEED=?,ALLOW_CLASSES=?,STATUS=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
+            "MAX_WISH=?,LOTTERY_SEED=?,ALLOW_CLASSES=?,MAX_CANCEL=?,CANCEL_LOCK_HOURS=?,STATUS=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
             (request.form["round_name"], request.form["rule"], request.form["start_at"],
              request.form["end_at"], 1 if request.form.get("waitlist_on") else 0,
              request.form.get("promote_mode", "auto"), int(request.form.get("max_wish", 3)),
              request.form.get("lottery_seed", "").strip() or None,
              request.form.get("allow_classes", "").strip() or None,
+             int(request.form.get("max_cancel", 2) or 0),
+             int(request.form.get("cancel_lock_hours", 2) or 0),
              request.form["status"], session["user_name"], ts, own["ID"]))
         conn.commit()
         flash("轮次设置已保存", "success")

@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS ROUNDS (
     MAX_WISH       INTEGER DEFAULT 3,                 -- 多志愿模式每人志愿数
     LOTTERY_SEED   TEXT,                              -- 随机抽签种子（公开可复现，保证公平可审计）
     ALLOW_CLASSES  TEXT,                              -- 分组轮选：允许选题的班级（逗号分隔，空=不限）
+    MAX_CANCEL     INTEGER DEFAULT 2,                 -- 防反复退选：每轮每生最多退选次数（0=不限）
+    CANCEL_LOCK_HOURS INTEGER DEFAULT 2,              -- 防截止前恶意退选：截止前多少小时内禁止退选（0=不限）
     STATUS         TEXT DEFAULT 'open',               -- open / closed
     CREATED_BY     TEXT,
     CREATED_AT     TEXT,
