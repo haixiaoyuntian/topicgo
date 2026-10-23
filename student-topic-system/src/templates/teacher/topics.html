@@ -1,5 +1,24 @@
 {% extends "base.html" %}
 {% block title %}题库维护 - 学生选题系统{% endblock %}
+
+{% macro prereq_editor(text, rules) %}
+{# 前置要求编辑器：人话描述（学生可见）+ 结构化规则（课程名+最低分，供前置核验） #}
+<div class="prereq-editor" style="flex-basis:100%;margin-top:6px;">
+  <input name="prereq_text" value="{{ text or '' }}" placeholder="前置要求（人话描述，学生选课前可见）" style="min-width:340px;">
+  <div class="prereq-rules">
+    {% for cname, need in (rules or {}).items() %}
+    <div class="prereq-row" style="display:inline-flex;gap:4px;margin:4px 4px 0 0;">
+      <input name="prereq_course" list="course-list" value="{{ cname }}" placeholder="课程名" style="width:130px;">
+      <input name="prereq_score" type="number" min="0" max="100" value="{{ need }}" placeholder="最低分" style="width:80px;">
+      <button type="button" class="btn btn-default btn-sm" onclick="this.parentElement.remove()">删</button>
+    </div>
+    {% endfor %}
+  </div>
+  <button type="button" class="btn btn-default btn-sm" style="margin-top:4px;" onclick="addPrereqRow(this)">+ 前置规则</button>
+  <span class="flow-tip" style="margin-left:8px;">按课程成绩设门槛（如 数据结构 ≥ 75），用于学生端提示与教师前置退课核验</span>
+</div>
+{% endmacro %}
+
 {% block content %}
 <div class="page-head">
   <div>
@@ -23,6 +42,8 @@
       <p><b>4. 开放选题：</b>课题发布后学生仍看不到，需到「选题轮次」设置策略并开启轮次，
          且课题状态为「开放」、处于轮次时间窗口内，学生才可见；</p>
       <p><b>5. 状态说明：</b>「开放」=参与本轮选题；「关闭」=暂时下架（学生不可见）。</p>
+      <p><b>6. 前置要求（可选）：</b>填写人话描述（学生选课前可见）并按课程设置分数门槛（如 数据结构 ≥ 75）；
+         学生端会提示自身成绩是否匹配，你也可在「选题监控 → 已选/候补名单与前置核验」中对不满足的学生一键退课并告知原因与建议。</p>
     </div>
   </details>
 
@@ -45,14 +66,37 @@
         <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
       </div>
     </div>
+    {{ prereq_editor(None, None) }}
     <button class="btn btn-primary btn-sm" type="submit">保存</button>
   </form>
   <datalist id="tag-list">
     {% for t in tag_suggestions %}<option value="{{ t }}">{% endfor %}
   </datalist>
+  <datalist id="course-list">
+    {% for c in course_suggestions %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+  <script>
+  function addPrereqRow(btn) {
+    var box = btn.parentElement.querySelector('.prereq-rules');
+    var row = document.createElement('div');
+    row.className = 'prereq-row';
+    row.style.cssText = 'display:inline-flex;gap:4px;margin:4px 4px 0 0;';
+    var c = document.createElement('input');
+    c.name = 'prereq_course'; c.setAttribute('list', 'course-list');
+    c.placeholder = '课程名'; c.style.width = '130px';
+    var s = document.createElement('input');
+    s.name = 'prereq_score'; s.type = 'number'; s.min = '0'; s.max = '100';
+    s.placeholder = '最低分'; s.style.width = '80px';
+    var d = document.createElement('button');
+    d.type = 'button'; d.className = 'btn btn-default btn-sm'; d.textContent = '删';
+    d.onclick = function () { row.remove(); };
+    row.appendChild(c); row.appendChild(s); row.appendChild(d);
+    box.appendChild(row);
+  }
+  </script>
 
   <table>
-    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>面向班级</th><th>状态</th><th>操作</th></tr></thead>
+    <thead><tr><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>面向班级</th><th>前置要求</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>
     {% for t in topics %}
       <tr>
@@ -80,6 +124,7 @@
                 <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
               </div>
             </div>
+            {{ prereq_editor(prereq_map[t.ID][0], prereq_map[t.ID][1]) }}
             <button class="btn btn-primary btn-sm" type="submit">保存</button>
             <button class="btn btn-default btn-sm" type="button" onclick="this.closest('form').style.display='none';this.closest('tr').querySelector('.td-name').style.display='inline';">取消</button>
           </form>
@@ -90,6 +135,10 @@
         <td>
           {% if not t.TARGET_CLASSES %}<span class="tag tag-green">所有班级</span>
           {% else %}{% for c in t.TARGET_CLASSES.split(',') %}<span class="tag tag-blue">{{ c }}</span> {% endfor %}{% endif %}
+        </td>
+        <td>
+          {% if not prereq_map[t.ID][1] %}<span class="tag tag-green">无</span>
+          {% else %}{% for cname, need in prereq_map[t.ID][1].items() %}<span class="tag tag-orange">{{ cname }}≥{{ need }}</span> {% endfor %}{% endif %}
         </td>
         <td>{% if t.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
         <td>
@@ -109,7 +158,7 @@
       </tr>
     {% endfor %}
     {% if not topics %}
-      <tr><td colspan="8" style="border:none;">
+      <tr><td colspan="9" style="border:none;">
         <div class="empty-guide" style="box-shadow:none;padding:32px;">
           <div class="empty-icon">🗂</div>
           <p>你还没有发布课题</p>

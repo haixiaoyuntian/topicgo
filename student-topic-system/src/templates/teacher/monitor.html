@@ -9,6 +9,7 @@
     <p><b>随机抽签模式：</b>学生报名后，点「执行公开抽签」，种子已按轮次设置生成并向全班公布，结果可复现验证。</p>
     <p><b>候补递补：</b>自动递补模式下学生退选立即递补；手动模式下在「候补名单」中点「递补」按钮操作。</p>
     <p><b>撤销误提交：</b>学生填错志愿/报错名时，在「待分配/待抽签名单」或「候补名单」中点「撤销」，学生即可重新提交（撤销动作写日志）。</p>
+    <p><b>前置要求退课：</b>「已选/候补名单与前置核验」中，红色行=成绩不满足课题前置要求，点「退课」填写原因与建议，学生立即收到站内通知（含原因、成绩明细、重选指引）。</p>
     <p><b>导出存档：</b>点「导出 CSV」下载自己课题的选题结果（含候补信息），用于存档上报。</p>
     <p><b>注意：</b>本页只统计你发布的课题和你名下的学生。</p>
   </div>
@@ -63,6 +64,40 @@
     </tbody>
   </table>
 </div>
+
+{% if enrolled %}
+<div class="card">
+  <h3>已选/候补名单与前置核验</h3>
+  <table>
+    <thead><tr><th>题目</th><th>学号</th><th>姓名</th><th>绩点</th><th>状态</th><th>前置核验</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for e in enrolled %}
+      <tr class="{{ 'row-warn' if not e.prereq_ok }}">
+        <td>{{ e.sel.TOPIC_CODE }} {{ e.sel.TOPIC_NAME }}</td>
+        <td>{{ e.sel.USER_NO }}</td>
+        <td>{{ e.sel.REAL_NAME }}</td>
+        <td>{{ e.sel.GPA }}</td>
+        <td>{% if e.sel.STATUS=='confirmed' %}<span class="tag tag-green">已确认</span>
+            {% else %}<span class="tag tag-orange">候补中</span>{% endif %}</td>
+        <td>
+          {% if not e.sel.PREREQ_RULES %}<span class="tag tag-green">无前置要求</span>
+          {% elif e.prereq_ok %}<span class="tag tag-green">满足</span>
+          {% else %}<span class="tag tag-red">不满足</span>
+            <div class="flow-tip" style="margin:2px 0 0;">{% for cname, need, actual in e.missing %}{{ cname }} 需≥{{ need }}，实际{{ actual if actual is not none else '未录入' }}；{% endfor %}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if not e.prereq_ok %}
+          <a class="btn btn-danger btn-sm" href="{{ url_for('teacher_kick', selection_id=e.sel.ID) }}">退课</a>
+          {% else %}-{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="flow-tip">红色行为成绩不满足前置要求的学生，可点「退课」填写原因与建议；退课后学生立即收到站内通知，名额按递补策略处理。</p>
+</div>
+{% endif %}
 
 {% if pending %}
 <div class="card">

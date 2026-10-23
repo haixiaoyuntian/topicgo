@@ -17,6 +17,7 @@
     <a class="menu-item {{ 'active' if request.endpoint=='student_wish' }}" href="{{ url_for('student_wish') }}">📝 志愿填报</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_mine' }}" href="{{ url_for('student_mine') }}">✅ 我的选题</a>
     <a class="menu-item {{ 'active' if request.endpoint=='student_public' }}" href="{{ url_for('student_public') }}">📢 结果公示</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='student_notices' }}" href="{{ url_for('student_notices') }}">🔔 通知{% if unread_notices %}<span class="badge">{{ unread_notices }}</span>{% endif %}</a>
     {% elif session.role == 'teacher' %}
     <div class="menu-group">教师功能</div>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_index' }}" href="{{ url_for('teacher_index') }}">🏠 首页</a>

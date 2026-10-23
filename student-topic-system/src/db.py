@@ -55,6 +55,10 @@ def migrate(conn):
     topic_cols = _columns(conn, "TOPICS")
     if "TARGET_CLASSES" not in topic_cols:
         conn.execute("ALTER TABLE TOPICS ADD COLUMN TARGET_CLASSES TEXT")
+    if "PREREQ_TEXT" not in topic_cols:
+        conn.execute("ALTER TABLE TOPICS ADD COLUMN PREREQ_TEXT TEXT")
+    if "PREREQ_RULES" not in topic_cols:
+        conn.execute("ALTER TABLE TOPICS ADD COLUMN PREREQ_RULES TEXT")
     conn.execute("""CREATE TABLE IF NOT EXISTS SELECTION_EVENTS (
         ID INTEGER PRIMARY KEY AUTOINCREMENT,
         ROUND_ID INTEGER NOT NULL, TOPIC_ID INTEGER, USER_ID INTEGER,
@@ -63,6 +67,28 @@ def migrate(conn):
         OPERATED_AT TEXT NOT NULL, CREATED_BY TEXT, CREATED_AT TEXT,
         UPDATED_BY TEXT, UPDATED_AT TEXT, FLAG INTEGER DEFAULT 1)""")
     conn.execute("CREATE INDEX IF NOT EXISTS IDX_EVENTS_ROUND ON SELECTION_EVENTS (ROUND_ID, OPERATED_AT)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS COURSES (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        COURSE_NAME TEXT NOT NULL UNIQUE,
+        CREDIT REAL DEFAULT 0.0,
+        CREATED_BY TEXT, CREATED_AT TEXT, UPDATED_BY TEXT, UPDATED_AT TEXT,
+        FLAG INTEGER DEFAULT 1)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS SCORES (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        USER_ID INTEGER NOT NULL, COURSE_ID INTEGER NOT NULL, SCORE REAL NOT NULL,
+        TERM TEXT,
+        CREATED_BY TEXT, CREATED_AT TEXT, UPDATED_BY TEXT, UPDATED_AT TEXT,
+        FLAG INTEGER DEFAULT 1)""")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS UK_SCORE_USER_COURSE ON SCORES (USER_ID, COURSE_ID) WHERE FLAG = 1")
+    conn.execute("CREATE INDEX IF NOT EXISTS IDX_SCORES_USER ON SCORES (USER_ID)")
+    conn.execute("""CREATE TABLE IF NOT EXISTS NOTICES (
+        ID INTEGER PRIMARY KEY AUTOINCREMENT,
+        USER_ID INTEGER NOT NULL, TITLE TEXT NOT NULL, CONTENT TEXT,
+        KIND TEXT DEFAULT 'kick', TOPIC_ID INTEGER, READ_FLAG INTEGER DEFAULT 0,
+        PUBLISHED_AT TEXT,
+        CREATED_BY TEXT, CREATED_AT TEXT, UPDATED_BY TEXT, UPDATED_AT TEXT,
+        FLAG INTEGER DEFAULT 1)""")
+    conn.execute("CREATE INDEX IF NOT EXISTS IDX_NOTICES_USER ON NOTICES (USER_ID, READ_FLAG)")
 
 
 def init_db():
@@ -115,6 +141,39 @@ def seed(conn):
             " VALUES(?,?,?,?,?,?,6,'open','system',?,1)",
             (code, name, desc, tag, diff, max_num, ts),
         )
+    # 课程字典 + 演示成绩（由教师端维护；含一名《数据结构》挂科学生 chenqi，用于演示前置门槛）
+    course_ids = {}
+    for cname, credit in [("数据结构", 4.0), ("计算机组成原理", 3.5), ("面向对象程序设计", 3.0), ("高等数学", 5.0)]:
+        cur = conn.execute(
+            "INSERT INTO COURSES(COURSE_NAME,CREDIT,CREATED_BY,CREATED_AT,FLAG) VALUES(?,?,'system',?,1)",
+            (cname, credit, ts))
+        course_ids[cname] = cur.lastrowid
+    demo_scores = {
+        "zhangsan": {"数据结构": 88, "计算机组成原理": 76, "高等数学": 82},
+        "lisi": {"数据结构": 72, "高等数学": 68},
+        "wangwu": {"数据结构": 91, "计算机组成原理": 85, "高等数学": 90},
+        "zhaoliu": {"数据结构": 65, "高等数学": 71},
+        "chenqi": {"数据结构": 58, "高等数学": 63},   # 数据结构挂科
+    }
+    for uname, sc in demo_scores.items():
+        row = conn.execute("SELECT ID FROM USERS WHERE USER_NAME=?", (uname,)).fetchone()
+        if not row:
+            continue
+        for cname, val in sc.items():
+            conn.execute(
+                "INSERT INTO SCORES(USER_ID,COURSE_ID,SCORE,TERM,CREATED_BY,CREATED_AT,FLAG)"
+                " VALUES(?,?,?,?, 'system', ?,1)",
+                (row["ID"], course_ids[cname], val, "2026春", ts))
+    # 课题前置要求：人话描述（学生选课前可见）+ 结构化规则（供前置校验）
+    prereqs = {
+        "T03": ("需先修《数据结构》且成绩 ≥ 75 分，了解 Python 基础，能阅读英文技术文档",
+                '{"数据结构": 75}'),
+        "T05": ("需先修《数据结构》≥ 70 分且《高等数学》≥ 70 分，了解基本密码学概念",
+                '{"数据结构": 70, "高等数学": 70}'),
+    }
+    for code, (ptext, prules) in prereqs.items():
+        conn.execute("UPDATE TOPICS SET PREREQ_TEXT=?, PREREQ_RULES=? WHERE TOPIC_CODE=?",
+                     (ptext, prules, code))
     # 每位教师默认拥有一个自己的轮次（刘老师 ID=6）
     teacher = conn.execute("SELECT ID FROM USERS WHERE ROLE='teacher' AND FLAG=1").fetchone()
     if teacher:

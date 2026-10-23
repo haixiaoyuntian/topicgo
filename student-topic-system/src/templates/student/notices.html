@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}通知 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>🔔 通知</h2>
+    <p class="page-sub">教师退课提示、前置要求核验结果等都会在这里通知你{% if unread %}｜本次有 {{ unread }} 条未读{% endif %}</p>
+  </div>
+</div>
+
+<div class="card">
+  {% if notices %}
+    {% for n in notices %}
+    <div class="notice-item {{ '' if n.READ_FLAG else 'unread' }}">
+      <h4>{% if not n.READ_FLAG %}<span class="badge">新</span>{% endif %}{{ n.TITLE }}</h4>
+      <p class="page-sub" style="margin:0 0 6px;">{{ n.PUBLISHED_AT }}</p>
+      <pre>{{ n.CONTENT }}</pre>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-inline">暂无通知。</p>
+  {% endif %}
+</div>
+{% endblock %}

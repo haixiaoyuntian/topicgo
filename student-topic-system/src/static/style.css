@@ -111,6 +111,19 @@ tr:hover td { background: #fafcff; }
 /* 表格行警示 */
 .row-warn td { background: #fff1f0; }
 .row-warn:hover td { background: #ffe7e6; }
+.badge { display:inline-block; min-width:18px; padding:0 5px; margin-left:6px; border-radius:9px;
+  background:#f5222d; color:#fff; font-size:12px; line-height:18px; text-align:center; }
+.prereq-box { margin:6px 0 0; padding:8px 10px; border-left:3px solid #1677ff; background:#f0f6ff;
+  border-radius:4px; font-size:13px; color:#333; }
+.prereq-box b { color:#1677ff; }
+.prereq-miss { border-left-color:#fa8c16; background:#fff7e6; color:#ad4e00; }
+.prereq-ok { border-left-color:#52c41a; background:#f6ffed; color:#389e0d; }
+.score-fail { color:#cf1322; font-weight:600; }
+.notice-item { border:1px solid #f0f0f0; border-radius:6px; padding:12px 14px; margin-bottom:10px; }
+.notice-item.unread { border-color:#ffa39e; background:#fff2f0; }
+.notice-item h4 { margin:0 0 6px; font-size:14px; }
+.notice-item pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:13px;
+  color:#555; margin:0; }
 
 textarea { border: 1px solid #d9d9d9; border-radius: 4px; padding: 8px 10px; font-size: 14px; font-family: inherit; resize: vertical; }
 

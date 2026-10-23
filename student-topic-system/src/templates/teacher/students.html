@@ -24,14 +24,21 @@
     <button class="btn btn-primary" type="submit">查询</button>
   </form>
   <table>
-    <thead><tr><th>学号</th><th>姓名</th><th>班级</th><th>绩点</th><th>选题状态</th><th>志愿/候补序号</th><th>课题</th><th>退选次数</th><th>选题时间</th></tr></thead>
+    <thead><tr><th>学号</th><th>姓名</th><th>班级</th><th>绩点</th><th>各科成绩</th><th>选题状态</th><th>志愿/候补序号</th><th>课题</th><th>退选次数</th><th>操作</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr class="{{ 'row-warn' if r.status=='none' }}">
         <td>{{ r.student.USER_NO }}</td>
         <td>{{ r.student.REAL_NAME }}</td>
         <td>{{ r.student.CLASS_NAME or '-' }}</td>
-        <td>{{ r.student.GPA }}</td>
+        <td><b>{{ r.student.GPA }}</b></td>
+        <td>
+          {% for cname, val in r.scores.items() %}
+            <span class="class-chip {{ 'score-fail' if val < 60 }}">{{ cname }} {{ val }}</span>
+          {% else %}
+            <span class="empty-inline">暂无成绩</span>
+          {% endfor %}
+        </td>
         <td>
           {% if r.status=='none' %}<span class="tag tag-red">未选题</span>
           {% elif r.status=='confirmed' %}<span class="tag tag-green">已确认</span>
@@ -47,14 +54,36 @@
             {% if r.cancel_used >= r.cancel_max %}<span class="tag tag-red">已用尽</span>{% endif %}
           {% else %}不限{% endif %}
         </td>
-        <td>{{ r.sel.SELECTED_AT if r.sel else '-' }}</td>
+        <td>
+          <button class="btn btn-default btn-sm" onclick="var f=this.closest('td').querySelector('.score-form');f.style.display=f.style.display=='flex'?'none':'flex';">录成绩/绩点</button>
+          <form method="post" class="inline-form score-form" style="display:none;margin-top:8px;">
+            {{ csrf_input() }}
+            <input type="hidden" name="action" value="save_gpa">
+            <input type="hidden" name="user_id" value="{{ r.student.ID }}">
+            <input name="gpa" type="number" step="0.1" min="0" max="5" value="{{ r.student.GPA }}" style="width:70px;" title="绩点 0~5">
+            <button class="btn btn-default btn-sm" type="submit">存绩点</button>
+          </form>
+          <form method="post" class="inline-form score-form" style="display:none;margin-top:6px;">
+            {{ csrf_input() }}
+            <input type="hidden" name="action" value="save_score">
+            <input type="hidden" name="user_id" value="{{ r.student.ID }}">
+            <input name="course_name" list="course-list" placeholder="课程名" style="width:130px;" required>
+            <input name="score" type="number" step="0.1" min="0" max="100" placeholder="分数" style="width:70px;" required>
+            <input name="term" placeholder="学期" style="width:80px;">
+            <button class="btn btn-primary btn-sm" type="submit">存成绩</button>
+          </form>
+        </td>
       </tr>
     {% else %}
-      <tr><td colspan="9" class="empty">暂无学生</td></tr>
+      <tr><td colspan="10" class="empty">暂无学生</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  <datalist id="course-list">
+    {% for c in course_suggestions %}<option value="{{ c }}">{% endfor %}
+  </datalist>
   <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。
-    「退选次数」显示 已用/上限，用尽的学生如需再退选会联系你；撤销学生误提交的志愿不计入其次数。</p>
+    「退选次数」显示 已用/上限，用尽的学生如需再退选会联系你；撤销学生误提交的志愿不计入其次数。
+    成绩与绩点由你维护，用于绩点优先放行、多志愿分配与课题前置要求核验；红色分数=挂科（&lt;60）。</p>
 </div>
 {% endblock %}

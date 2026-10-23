@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}前置要求退课 - 学生选题系统{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>⛔ 前置要求退课</h2>
+    <p class="page-sub">学生成绩不满足课题前置要求时，可在此退课并告知原因与建议，学生将收到站内通知</p>
+  </div>
+</div>
+
+<div class="card">
+  <h3>核验信息</h3>
+  <table>
+    <tbody>
+      <tr><td style="width:120px;">学生</td><td>{{ sel.REAL_NAME }}（{{ sel.USER_NO }}｜{{ sel.CLASS_NAME or '-' }}｜绩点 {{ sel.GPA }}）</td></tr>
+      <tr><td>选题</td><td>{{ sel.TOPIC_CODE }} 《{{ sel.TOPIC_NAME }}》（{{ '已确认' if sel.STATUS=='confirmed' else '候补中' }}）</td></tr>
+      <tr><td>前置要求</td><td>{{ topic.PREREQ_TEXT or '（未设置）' }}</td></tr>
+      <tr><td>核验结果</td><td>
+        {% if prereq_ok %}<span class="tag tag-green">已满足前置要求</span>
+        {% else %}<span class="tag tag-red">不满足</span>
+          <ul style="margin:6px 0 0;padding-left:18px;">
+          {% for cname, need, actual in missing %}
+            <li class="score-fail">{{ cname }}：要求 ≥ {{ need }} 分，该生成绩为 {{ actual if actual is not none else '未录入' }}</li>
+          {% endfor %}
+          </ul>{% endif %}
+      </td></tr>
+      <tr><td>该生成绩</td><td>
+        {% if scores %}{% for cname, val in scores.items() %}<span class="class-chip">{{ cname }} {{ val }}</span>{% endfor %}
+        {% else %}暂无成绩记录{% endif %}
+      </td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>退课原因与建议（将一并通知学生，请认真填写）</h3>
+  <form method="post" class="vform">
+    {{ csrf_input() }}
+    <div class="form-item"><label>退课原因（必填，≤500 字）</label>
+      <textarea name="reason" rows="3" required maxlength="500"
+        placeholder="如：该课题要求先修《数据结构》且成绩≥75分，该生《数据结构》58分未达标，暂不具备完成该课题的基础。"></textarea></div>
+    <div class="form-item"><label>给该生的建议（必填，≤2000 字）</label>
+      <textarea name="advice" rows="6" required maxlength="2000"
+        placeholder="如：建议先复习《数据结构》核心内容（线性表、树与图、排序），下学期再挑战AI类课题；本轮可选《基于Flask的图书管理系统》（较易，无前置要求）或《电商销售数据分析与可视化》（中等，重实践）。"></textarea></div>
+    <button class="btn btn-danger" type="submit" onclick="return confirm('确认退课？学生将收到含原因与建议的通知，名额按递补策略处理。')">确认退课并通知学生</button>
+    <a class="btn btn-default" href="{{ url_for('teacher_monitor') }}">取消</a>
+  </form>
+</div>
+{% endblock %}

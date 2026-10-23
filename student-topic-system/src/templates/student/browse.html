@@ -51,9 +51,19 @@
     {% for t in topics %}
       {% set picked = stats.get(t.ID, 0) %}
       {% set left = t.MAX_NUM - picked %}
+      {% set pok, pmiss = prereq_map.get(t.ID, (True, [])) %}
       <tr>
         <td>{{ t.TOPIC_CODE }}</td>
-        <td><a class="link" href="javascript:;" title="{{ t.TOPIC_DESC }}">{{ t.TOPIC_NAME }}</a></td>
+        <td>
+          <a class="link" href="javascript:;" title="{{ t.TOPIC_DESC }}">{{ t.TOPIC_NAME }}</a>
+          {% if t.PREREQ_TEXT %}
+          <div class="prereq-box {{ 'prereq-ok' if pok else 'prereq-miss' }}">
+            <b>📌 前置要求：</b>{{ t.PREREQ_TEXT }}
+            {% if pmiss %}<br>⚠️ 你当前成绩：{% for cname, need, actual in pmiss %}{{ cname }} 需≥{{ need }}分（你：{{ actual if actual is not none else '未录入' }}）{% if not loop.last %}；{% endif %}{% endfor %}
+            {% elif t.PREREQ_RULES %}<br>✅ 你的成绩已满足前置要求{% endif %}
+          </div>
+          {% endif %}
+        </td>
         <td><span class="tag tag-blue">{{ t.TAG }}</span></td>
         <td><span class="tag {{ 'tag-red' if t.DIFFICULTY=='较难' else 'tag-orange' if t.DIFFICULTY=='中等' else 'tag-green' }}">{{ t.DIFFICULTY }}</span></td>
         <td>{{ t.MAX_NUM }}</td>
@@ -81,7 +91,7 @@
           {% elif left > 0 %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
             {{ csrf_input() }}
-            <button class="btn btn-primary btn-sm" onclick="return confirm('确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>
+            <button class="btn btn-primary btn-sm" onclick="return confirm('{{ '⚠️ 警告：你的成绩暂不满足该课题前置要求，教师核验后可能退课，确定仍要选择？\n\n' if not pok }}确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>
           </form>
           {% elif round.WAITLIST_ON %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">

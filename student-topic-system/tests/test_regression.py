@@ -475,6 +475,78 @@ check("非锁定窗口可正常退选", sql("SELECT STATUS FROM SELECTIONS WHERE
 body = get(login("teacher"), "/teacher/students")
 check("我的学生页展示退选次数", "退选次数" in body)
 
+# ---------- 17. 学业数据与前置要求退课 ----------
+print("\n== 17. 学业数据与前置要求退课 ==")
+conn = sqlite3.connect(DB)
+conn.execute("DELETE FROM NOTICES")
+conn.commit()
+conn.close()
+reset_round(rule="first_come", max_cancel=5, cancel_lock_hours=0)
+tea = login("teacher")
+uid_zs = sql("SELECT ID FROM USERS WHERE USER_NAME='zhangsan'")[0]["ID"]
+uid_cq = sql("SELECT ID FROM USERS WHERE USER_NAME='chenqi'")[0]["ID"]
+uid_ww = sql("SELECT ID FROM USERS WHERE USER_NAME='wangwu'")[0]["ID"]
+tid_t04 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T04'")[0]["ID"]
+
+# 17.1 教师端录入成绩与绩点
+body = post(tea, "/teacher/students", data={"action": "save_score", "user_id": uid_zs,
+                                            "course_name": "数据结构", "score": "88"})
+check("教师可录成绩（重复录入即更新）", "已录入" in body)
+check("非法成绩被拒绝", "成绩需在 0~100" in post(tea, "/teacher/students", data={
+    "action": "save_score", "user_id": uid_zs, "course_name": "数据结构", "score": "120"}))
+body = post(tea, "/teacher/students", data={"action": "save_gpa", "user_id": uid_zs, "gpa": "3.9"})
+check("教师可维护绩点", "绩点已更新" in body)
+check("绩点越界被拒绝", "绩点需在 0~5" in post(tea, "/teacher/students", data={
+    "action": "save_gpa", "user_id": uid_zs, "gpa": "9"}))
+body = get(tea, "/teacher/students")
+check("我的学生页展示成绩与挂科标红", "数据结构" in body and "score-fail" in body)
+
+# 17.2 课题前置要求设置（人话 + 结构化规则）
+body = post(tea, "/teacher/topics", data={
+    "action": "edit", "topic_id": tid_t04, "topic_name": "电商销售数据分析与可视化",
+    "topic_desc": "爬取公开销售数据，完成清洗、分析与大屏展示", "tag": "数据分析",
+    "difficulty": "中等", "max_num": 4, "prereq_text": "需先修《高等数学》且成绩≥70分",
+    "prereq_course": "高等数学", "prereq_score": 70})
+check("教师可设课题前置要求", "题目已更新" in body
+      and sql("SELECT PREREQ_RULES FROM TOPICS WHERE ID=?", (tid_t04,))[0]["PREREQ_RULES"] == '{"高等数学": 70.0}')
+
+# 17.3 学生端选课前看到前置要求与自身匹配情况
+body = get(login("chenqi"), "/student/browse")
+check("学生浏览页展示前置要求", "前置要求" in body)
+
+# 17.4 不满足前置：选题预警 -> 教师核验 -> 退课 -> 学生收通知
+post(login("chenqi"), "/student/select/3")   # T03 需数据结构≥75，chenqi 58 分
+sid = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid_cq,))
+if sid:
+    body = get(tea, "/teacher/monitor")
+    check("监控页前置核验显示不满足", "不满足" in body)
+    body = get(tea, f"/teacher/kick/{sid[0]['ID']}")
+    check("退课页展示成绩明细与门槛", "前置要求退课" in body and "58" in body)
+    check("退课原因/建议必填", "不能为空" in post(tea, f"/teacher/kick/{sid[0]['ID']}",
+                                              data={"reason": "", "advice": ""}))
+    body = post(tea, f"/teacher/kick/{sid[0]['ID']}",
+                data={"reason": "《数据结构》58分未达到75分前置门槛。",
+                      "advice": "建议先复习数据结构核心内容，本轮可选T01图书管理系统（较易）。"})
+    check("教师可按前置要求退课", "已退掉" in body)
+    check("退课后选题记录保留为已取消",
+          sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid[0]["ID"],))[0]["STATUS"] == "cancelled")
+    ev = sql("SELECT REMARK FROM SELECTION_EVENTS WHERE ACTION='kick'")
+    check("kick 日志含原因与建议", len(ev) >= 1 and "58分未达到75分" in ev[0]["REMARK"]
+          and "先复习数据结构" in ev[0]["REMARK"])
+    nts = sql("SELECT TITLE, CONTENT FROM NOTICES WHERE USER_ID=?", (uid_cq,))
+    check("学生收到站内退课通知", len(nts) == 1 and "已被教师退课" in nts[0]["TITLE"]
+          and "58分未达到75分" in nts[0]["CONTENT"] and "先复习数据结构" in nts[0]["CONTENT"])
+    body = get(login("chenqi"), "/student/notices")
+    check("学生通知页展示退课提示", "已被教师退课" in body)
+else:
+    check("chenqi 选 T03 成功", False)
+
+# 17.5 满足前置的学生可正常选题；管理员不接触成绩信息
+post(login("wangwu"), "/student/select/3")   # wangwu 数据结构 91 ≥75
+check("满足前置要求可正常选题",
+      sql("SELECT COUNT(*) c FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid_ww,))[0]["c"] == 1)
+check("管理员不能访问学生成绩页", "无权限" in get(login("admin"), "/teacher/students"))
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:

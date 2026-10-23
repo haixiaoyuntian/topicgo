@@ -58,6 +58,19 @@
   </div>
 </div>
 
+{% if notices %}
+<div class="card" style="border-color:#ffa39e;">
+  <h3>🔔 最新通知{% if notices[0].READ_FLAG == 0 %}<span class="badge">未读</span>{% endif %}</h3>
+  {% for n in notices %}
+  <div class="notice-item {{ '' if n.READ_FLAG else 'unread' }}">
+    <h4>{{ n.TITLE }}</h4>
+    <pre>{{ n.CONTENT }}</pre>
+  </div>
+  {% endfor %}
+  <a class="btn btn-default btn-sm" href="{{ url_for('student_notices') }}">查看全部通知</a>
+</div>
+{% endif %}
+
 <!-- 数据概览 -->
 <div class="stat-cards">
   <div class="stat-card"><div class="num">{{ topic_total }}</div><div class="label">老师开放的课题</div></div>

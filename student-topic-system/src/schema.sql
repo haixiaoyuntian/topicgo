@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS TOPICS (
     MAX_NUM        INTEGER NOT NULL DEFAULT 4,        -- 人数上限
     TEACHER_ID     INTEGER,
     TARGET_CLASSES TEXT,                              -- 面向班级（逗号分隔，空=教师名下所有班级）
+    PREREQ_TEXT    TEXT,                              -- 前置要求（人话描述，学生选课前可见）
+    PREREQ_RULES   TEXT,                              -- 前置规则 JSON，如 {"数据结构":75,"高等数学":70}
     STATUS         TEXT DEFAULT 'open',               -- open / closed
     CREATED_BY     TEXT,
     CREATED_AT     TEXT,
@@ -105,6 +107,55 @@ CREATE TABLE IF NOT EXISTS SELECTION_EVENTS (
 );
 
 CREATE INDEX IF NOT EXISTS IDX_EVENTS_ROUND ON SELECTION_EVENTS (ROUND_ID, OPERATED_AT);
+
+-- 课程字典：教师录成绩时按课程名归集（学分仅作展示）
+CREATE TABLE IF NOT EXISTS COURSES (
+    ID             INTEGER PRIMARY KEY AUTOINCREMENT,
+    COURSE_NAME    TEXT NOT NULL UNIQUE,
+    CREDIT         REAL DEFAULT 0.0,
+    CREATED_BY     TEXT,
+    CREATED_AT     TEXT,
+    UPDATED_BY     TEXT,
+    UPDATED_AT     TEXT,
+    FLAG           INTEGER DEFAULT 1
+);
+
+-- 学生课程成绩：由教师按自己管理的学生录入；同一学生同一课程只保留一条（重复录入即更新）
+CREATE TABLE IF NOT EXISTS SCORES (
+    ID             INTEGER PRIMARY KEY AUTOINCREMENT,
+    USER_ID        INTEGER NOT NULL,
+    COURSE_ID      INTEGER NOT NULL,
+    SCORE          REAL NOT NULL,
+    TERM           TEXT,                              -- 学期，如 2026春
+    CREATED_BY     TEXT,
+    CREATED_AT      TEXT,
+    UPDATED_BY     TEXT,
+    UPDATED_AT     TEXT,
+    FLAG           INTEGER DEFAULT 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS UK_SCORE_USER_COURSE ON SCORES (USER_ID, COURSE_ID) WHERE FLAG = 1;
+
+CREATE INDEX IF NOT EXISTS IDX_SCORES_USER ON SCORES (USER_ID);
+
+-- 站内通知：目前用于「教师退课提示」（含原因与建议），学生登录后可见
+CREATE TABLE IF NOT EXISTS NOTICES (
+    ID             INTEGER PRIMARY KEY AUTOINCREMENT,
+    USER_ID        INTEGER NOT NULL,                  -- 接收人（学生）
+    TITLE          TEXT NOT NULL,
+    CONTENT        TEXT,
+    KIND           TEXT DEFAULT 'kick',               -- kick 退课提醒
+    TOPIC_ID       INTEGER,
+    READ_FLAG      INTEGER DEFAULT 0,                 -- 0 未读 / 1 已读
+    PUBLISHED_AT   TEXT,
+    CREATED_BY     TEXT,
+    CREATED_AT     TEXT,
+    UPDATED_BY     TEXT,
+    UPDATED_AT     TEXT,
+    FLAG           INTEGER DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS IDX_NOTICES_USER ON NOTICES (USER_ID, READ_FLAG);
 
 CREATE TABLE IF NOT EXISTS ANNOUNCEMENTS (
     ID             INTEGER PRIMARY KEY AUTOINCREMENT,
