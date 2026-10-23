@@ -42,6 +42,7 @@
     </table>
   {% else %}
   <form method="post" onsubmit="return checkWishes()">
+    {{ csrf_input() }}
     <table>
       <thead><tr><th style="width:70px;">选择</th><th>编号</th><th>题目名称</th><th>标签</th><th>难度</th><th>人数上限</th><th>当前{{ '填报' if round and round.RULE=='multi_wish' else '报名' }}人数</th>
         {% if round and round.RULE=='multi_wish' %}<th>志愿序号</th>{% endif %}</tr></thead>

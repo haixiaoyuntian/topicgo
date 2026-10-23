@@ -122,8 +122,8 @@ def seed(conn):
             (teacher["ID"], ts),
         )
     conn.execute(
-        "INSERT INTO ANNOUNCEMENTS(TITLE,CONTENT,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
-        " VALUES('选题须知','每人限选1题；满员题目可加入候补；退选后名额按递补策略处理。',?,'system',?,1)",
-        (ts, ts),
+        "INSERT INTO ANNOUNCEMENTS(TITLE,CONTENT,TEACHER_ID,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
+        " VALUES('选题须知','每人限选1题；满员题目可加入候补；退选后名额按递补策略处理。',?,?,'system',?,1)",
+        (teacher["ID"] if teacher else None, ts, ts),
     )
     conn.commit()

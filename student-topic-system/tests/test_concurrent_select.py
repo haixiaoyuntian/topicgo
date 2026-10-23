@@ -1,4 +1,5 @@
 """并发选题冒烟测试：N 个用户同时抢 1 个题目，验证不超卖"""
+import re
 import sqlite3
 import threading
 import urllib.request
@@ -41,13 +42,17 @@ lock = threading.Lock()
 
 
 def grab(i):
-    # 登录
+    # 登录（携带 CSRF 令牌）
     cookie = urllib.request.HTTPCookieProcessor()
     opener = urllib.request.build_opener(cookie)
-    data = urllib.parse.urlencode({"username": f"test{i}", "password": "123456"}).encode()
+    page = opener.open(f"{BASE}/login").read().decode()
+    token = re.search(r'name="csrf-token" content="([0-9a-f]+)"', page).group(1)
+    data = urllib.parse.urlencode(
+        {"username": f"test{i}", "password": "123456", "_csrf_token": token}).encode()
     opener.open(f"{BASE}/login", data)
     # 选题
-    req = urllib.request.Request(f"{BASE}/student/select/{topic_id}", method="POST")
+    req = urllib.request.Request(f"{BASE}/student/select/{topic_id}", method="POST",
+                                 data=urllib.parse.urlencode({"_csrf_token": token}).encode())
     try:
         resp = opener.open(req)
         body = resp.read().decode()

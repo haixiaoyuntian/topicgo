@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>{% block title %}学生选题系统{% endblock %}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -45,6 +46,7 @@
       <div>
         <span class="role-tag">{{ '学生' if session.role=='student' else '教师' if session.role=='teacher' else '管理员' }}</span>
         <span class="user">{{ session.real_name }}</span>
+        <a class="top-link" href="{{ url_for('change_password') }}">🔒 修改密码</a>
         <a class="logout" href="{{ url_for('logout') }}">退出</a>
       </div>
     </header>

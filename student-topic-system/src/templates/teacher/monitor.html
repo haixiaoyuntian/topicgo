@@ -8,6 +8,7 @@
     <p><b>多志愿模式：</b>学生提交志愿后，点「执行志愿分配」统一分配（按志愿顺序+绩点优先），分配动作全部写日志、不可撤销。</p>
     <p><b>随机抽签模式：</b>学生报名后，点「执行公开抽签」，种子已按轮次设置生成并向全班公布，结果可复现验证。</p>
     <p><b>候补递补：</b>自动递补模式下学生退选立即递补；手动模式下在「候补名单」中点「递补」按钮操作。</p>
+    <p><b>撤销误提交：</b>学生填错志愿/报错名时，在「待分配/待抽签名单」或「候补名单」中点「撤销」，学生即可重新提交（撤销动作写日志）。</p>
     <p><b>导出存档：</b>点「导出 CSV」下载自己课题的选题结果（含候补信息），用于存档上报。</p>
     <p><b>注意：</b>本页只统计你发布的课题和你名下的学生。</p>
   </div>
@@ -25,6 +26,7 @@
   <h3>策略执行：多志愿分配</h3>
   <p class="flow-tip">当前有 {{ wish_total }} 条志愿记录待分配。分配规则：按志愿序号依次处理，同志愿超员按绩点优先；未命中任何志愿者转第一志愿候补。分配后动作全部写日志。</p>
   <form method="post" action="{{ url_for('teacher_allocate') }}" onsubmit="return confirm('确认执行统一分配？分配后不可撤销。')">
+    {{ csrf_input() }}
     <button class="btn btn-primary">执行志愿分配</button>
   </form>
 </div>
@@ -34,6 +36,7 @@
   <p class="flow-tip">当前有 {{ entry_total }} 条报名记录。种子：<b>{{ round.LOTTERY_SEED or '自动生成' }}</b>。
   种子将向全员公开，任何人都能用该种子复现验证抽签结果，保证公平可审计。</p>
   <form method="post" action="{{ url_for('teacher_lottery') }}" onsubmit="return confirm('确认执行抽签？结果不可撤销。')">
+    {{ csrf_input() }}
     <button class="btn btn-primary">执行公开抽签</button>
   </form>
 </div>
@@ -61,6 +64,34 @@
   </table>
 </div>
 
+{% if pending %}
+<div class="card">
+  <h3>待分配/待抽签名单（可撤销误提交）</h3>
+  <table>
+    <thead><tr><th>题目</th><th>学号</th><th>姓名</th><th>绩点</th><th>类型</th><th>志愿序号</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for p in pending %}
+      <tr>
+        <td>{{ p.TOPIC_CODE }} {{ p.TOPIC_NAME }}</td>
+        <td>{{ p.USER_NO }}</td>
+        <td>{{ p.REAL_NAME }}</td>
+        <td>{{ p.GPA }}</td>
+        <td>{% if p.STATUS=='wish' %}<span class="tag tag-blue">志愿</span>{% else %}<span class="tag tag-blue">报名</span>{% endif %}</td>
+        <td>{{ p.WISH_NO or '-' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('teacher_revoke', selection_id=p.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认撤销 {{ p.REAL_NAME }} 的该条记录？撤销后学生可重新提交。')">
+            {{ csrf_input() }}
+            <button class="btn btn-danger btn-sm">撤销</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if waiters %}
 <div class="card">
   <h3>候补名单（可手动递补）</h3>
@@ -77,7 +108,13 @@
         <td>
           <form method="post" action="{{ url_for('teacher_manual_promote', selection_id=w.ID) }}" style="display:inline;"
                 onsubmit="return confirm('确认手动递补该同学？')">
+            {{ csrf_input() }}
             <button class="btn btn-primary btn-sm">递补</button>
+          </form>
+          <form method="post" action="{{ url_for('teacher_revoke', selection_id=w.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认撤销该同学的候补记录？')">
+            {{ csrf_input() }}
+            <button class="btn btn-danger btn-sm">撤销</button>
           </form>
         </td>
       </tr>

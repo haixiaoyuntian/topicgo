@@ -7,6 +7,7 @@
   </h3>
 
   <form id="add-form" method="post" class="inline-form" style="display:none;">
+    {{ csrf_input() }}
     <input type="hidden" name="action" value="add">
     <input name="user_no" placeholder="学号/工号" required>
     <input name="user_name" placeholder="登录名" required>
@@ -49,6 +50,7 @@
         <td>
           <span class="td-name">{{ u.REAL_NAME }}</span>
           <form method="post" class="inline-form edit-form">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
             <input name="real_name" value="{{ u.REAL_NAME }}" required>
@@ -79,16 +81,19 @@
         <td>
           <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';toggleAdvisor('edit{{ u.ID }}');">编辑</button>
           <form method="post" style="display:inline;" onsubmit="return confirm('{{ '停用' if u.STATUS=='active' else '启用' }}该账号？')">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="toggle">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
             <button class="btn btn-default btn-sm">{{ '停用' if u.STATUS=='active' else '启用' }}</button>
           </form>
           <form method="post" style="display:inline;" onsubmit="return confirm('重置密码为 123456？')">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="reset_pwd">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
             <button class="btn btn-default btn-sm">重置密码</button>
           </form>
           <form method="post" style="display:inline;" onsubmit="return confirm('删除该用户？有选题记录的用户不能删除。')">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="user_id" value="{{ u.ID }}">
             <button class="btn btn-danger btn-sm">删除</button>

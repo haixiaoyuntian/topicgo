@@ -10,15 +10,18 @@
 过程留痕：选题、退选、递补、分配、抽签全部写入 SELECTION_EVENTS 操作日志
 """
 import csv
+import hmac
 import io
 import os
 import random
+import secrets
 import sqlite3
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from flask import (Flask, flash, redirect, render_template, request,
                    Response, send_file, session, url_for)
+from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from db import BASE_DIR, get_conn, init_db, now_str
@@ -27,6 +30,39 @@ app = Flask(__name__)
 app.secret_key = "topicgo-secret-key"
 
 init_db()
+
+
+# ---------------- CSRF 防护 ----------------
+# 每个会话生成一次性令牌，写入所有表单隐藏域；POST 时校验，防止跨站请求伪造
+
+@app.before_request
+def csrf_protect():
+    if "_csrf_token" not in session:
+        session["_csrf_token"] = secrets.token_hex(16)
+    if request.method != "POST":
+        return None
+    token = session.get("_csrf_token", "")
+    form_token = request.form.get("_csrf_token", "")
+    if not form_token or not hmac.compare_digest(token, form_token):
+        flash("表单校验失败（CSRF），请返回页面重试", "error")
+        ref = request.referrer
+        if ref and urlparse(ref).netloc in ("", request.host):
+            return redirect(ref)
+        return redirect(url_for("index"))
+    return None
+
+
+@app.context_processor
+def inject_csrf():
+    def csrf_token():
+        return session.get("_csrf_token", "")
+
+    def csrf_input():
+        # Markup 避免被 Jinja 自动转义，确保渲染为真实的隐藏表单域
+        return Markup('<input type="hidden" name="_csrf_token" value="{}">'
+                      ).format(session.get("_csrf_token", ""))
+
+    return dict(csrf_token=csrf_token, csrf_input=csrf_input)
 
 RULE_NAMES = {
     "first_come": "先到先得",
@@ -71,12 +107,13 @@ def current_user(conn):
 
 
 def active_round(conn, teacher_id):
-    """指定教师当前开放的选题轮次（状态 open 且处于时间窗口内）"""
+    """指定教师当前开放的选题轮次（状态 open 且处于时间窗口内，取最新一个）"""
     if not teacher_id:
         return None
     now = now_str()
     return conn.execute(
-        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND STATUS='open' AND START_AT<=? AND END_AT>=? AND FLAG=1",
+        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND STATUS='open' AND START_AT<=? AND END_AT>=? AND FLAG=1"
+        " ORDER BY ID DESC",
         (teacher_id, now, now),
     ).fetchone()
 
@@ -229,9 +266,12 @@ def login():
         elif user["STATUS"] != "active":
             flash("该账号已被停用，请联系系统管理员", "error")
         elif check_password_hash(user["PASSWORD_HASH"], pwd):
+            csrf_token = session.get("_csrf_token")  # 登录后保留 CSRF 令牌，避免表单失效
             session.clear()
             session.update(user_id=user["ID"], user_name=user["USER_NAME"],
                            real_name=user["REAL_NAME"], role=user["ROLE"])
+            if csrf_token:
+                session["_csrf_token"] = csrf_token
             return redirect(url_for("index"))
         else:
             flash("账号或密码错误", "error")
@@ -257,7 +297,7 @@ def student_browse():
     advisor = conn.execute("SELECT * FROM USERS WHERE ID=?", (user["ADVISOR_ID"],)).fetchone() \
         if user["ADVISOR_ID"] else None
     rnd = active_round(conn, user["ADVISOR_ID"])
-    # 学生只能看到自己指导教师发布的课题
+    # 学生只能看到自己指导教师发布的课题；老师未开放轮次时一律不可见（四重过滤）
     sql = "SELECT * FROM TOPICS WHERE STATUS='open' AND FLAG=1 AND TEACHER_ID=?"
     args = [user["ADVISOR_ID"]]
     if kw:
@@ -269,7 +309,7 @@ def student_browse():
     if diff:
         sql += " AND DIFFICULTY=?"
         args.append(diff)
-    topics = conn.execute(sql + " ORDER BY TOPIC_CODE", args).fetchall() if advisor else []
+    topics = conn.execute(sql + " ORDER BY TOPIC_CODE", args).fetchall() if (advisor and rnd) else []
     # 按课题面向班级二次过滤（TARGET_CLASSES）
     topics = [t for t in topics if topic_visible(t, user["CLASS_NAME"])]
     stats = topic_stats(conn, rnd["ID"]) if rnd else {}
@@ -695,6 +735,18 @@ def teacher_topics():
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
                      int(request.form.get("max_num", 4)), target, me, ts, int(request.form["topic_id"])))
                 flash("题目已更新", "success")
+        elif action == "toggle":
+            # 课题关闭/重新开放（仅自己的课题）
+            own = conn.execute("SELECT ID, STATUS FROM TOPICS WHERE ID=? AND TEACHER_ID=?",
+                               (int(request.form["topic_id"]), session["user_id"])).fetchone()
+            if not own:
+                flash("无权操作他人课题", "error")
+            else:
+                new_status = "closed" if own["STATUS"] == "open" else "open"
+                conn.execute(
+                    "UPDATE TOPICS SET STATUS=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                    (new_status, me, ts, own["ID"]))
+                flash(f"课题已{'关闭（学生不可见）' if new_status == 'closed' else '重新开放'}", "success")
         conn.commit()
         conn.close()
         return redirect(url_for("teacher_topics"))
@@ -741,9 +793,34 @@ def teacher_round():
     conn = get_conn()
     if request.method == "POST":
         ts = now_str()
-        rnd_id = int(request.form["round_id"])
+        action = request.form.get("action", "save")
+        if action == "create":
+            name = request.form.get("round_name", "").strip()
+            rule = request.form.get("rule", "first_come")
+            start_at = request.form.get("start_at", "").strip()
+            end_at = request.form.get("end_at", "").strip()
+            if not name or not start_at or not end_at:
+                flash("轮次名称与起止时间不能为空", "error")
+                conn.close()
+                return redirect(url_for("teacher_round"))
+            conn.execute(
+                "INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,"
+                "MAX_WISH,LOTTERY_SEED,ALLOW_CLASSES,STATUS,CREATED_BY,CREATED_AT,FLAG)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,'teacher',?,1)",
+                (name, session["user_id"], rule, start_at, end_at,
+                 0 if request.form.get("waitlist_on") == "0" else 1,  # 缺省开启候补（与表默认值一致）
+                 request.form.get("promote_mode", "auto"),
+                 int(request.form.get("max_wish", 3) or 3),
+                 request.form.get("lottery_seed", "").strip() or None,
+                 request.form.get("allow_classes", "").strip() or None,
+                 request.form.get("status", "open"), ts))
+            conn.commit()
+            flash(f"轮次「{name}」已创建（最新轮次即时生效）", "success")
+            conn.close()
+            return redirect(url_for("teacher_round"))
+        rnd_id = request.form.get("round_id")
         own = conn.execute("SELECT ID FROM ROUNDS WHERE ID=? AND TEACHER_ID=?",
-                           (rnd_id, session["user_id"])).fetchone()
+                           (int(rnd_id), session["user_id"])).fetchone() if rnd_id else None
         if not own:
             flash("无权修改他人轮次", "error")
             conn.close()
@@ -756,15 +833,19 @@ def teacher_round():
              request.form.get("promote_mode", "auto"), int(request.form.get("max_wish", 3)),
              request.form.get("lottery_seed", "").strip() or None,
              request.form.get("allow_classes", "").strip() or None,
-             request.form["status"], session["user_name"], ts, rnd_id))
+             request.form["status"], session["user_name"], ts, own["ID"]))
         conn.commit()
         flash("轮次设置已保存", "success")
         conn.close()
         return redirect(url_for("teacher_round"))
     rnd = active_round(conn, session["user_id"]) or own_round(conn)
+    rounds = conn.execute(
+        "SELECT * FROM ROUNDS WHERE TEACHER_ID=? AND FLAG=1 ORDER BY ID DESC",
+        (session["user_id"],)).fetchall()
     classes = teacher_classes(conn, session["user_id"])
     conn.close()
-    return render_template("teacher/round.html", round=rnd, rule_names=RULE_NAMES, classes=classes)
+    return render_template("teacher/round.html", round=rnd, rounds=rounds,
+                           rule_names=RULE_NAMES, classes=classes)
 
 
 # ---------------- 教师端：监控与策略执行（仅自己的课题） ----------------
@@ -777,6 +858,7 @@ def teacher_monitor():
     rows = []
     total_picked = total_left = wait_total = wish_total = entry_total = 0
     waiters = {}
+    pending = []
     if rnd:
         stats = topic_stats(conn, rnd["ID"], "confirmed")
         waits = topic_stats(conn, rnd["ID"], "waiting")
@@ -804,11 +886,20 @@ def teacher_monitor():
                 " ORDER BY s.TOPIC_ID, s.QUEUE_NO",
                 (rnd["ID"], session["user_id"])).fetchall():
             waiters.setdefault(r["TOPIC_ID"], []).append(r)
+        # 待分配/待抽签名单（教师可撤销误提交的记录）
+        for r in conn.execute(
+                "SELECT s.*, u.REAL_NAME, u.USER_NO, u.GPA, t.TOPIC_NAME, t.TOPIC_CODE"
+                " FROM SELECTIONS s JOIN USERS u ON u.ID=s.USER_ID JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+                " WHERE s.ROUND_ID=? AND s.STATUS IN('wish','entry') AND t.TEACHER_ID=?"
+                " ORDER BY t.TOPIC_CODE, s.WISH_NO, u.GPA DESC",
+                (rnd["ID"], session["user_id"])).fetchall():
+            pending.append(r)
     conn.close()
     return render_template("teacher/monitor.html", rows=rows, round=rnd,
                            total_picked=total_picked, total_left=total_left,
                            wait_total=wait_total, wish_total=wish_total,
-                           entry_total=entry_total, rule_names=RULE_NAMES, waiters=waiters)
+                           entry_total=entry_total, rule_names=RULE_NAMES, waiters=waiters,
+                           pending=pending)
 
 
 @app.route("/teacher/allocate", methods=["POST"])
@@ -900,6 +991,12 @@ def teacher_lottery():
             "SELECT * FROM TOPICS WHERE FLAG=1 AND STATUS='open' AND TEACHER_ID=?",
             (session["user_id"],)).fetchall()
         rng = random.Random(seed)
+        confirmed_users = set()
+        # 轮次内已确认的学生（含之前其它模式下选题的），一人最多中一题
+        for r in conn.execute(
+                "SELECT DISTINCT USER_ID FROM SELECTIONS WHERE ROUND_ID=? AND STATUS='confirmed'",
+                (rnd["ID"],)).fetchall():
+            confirmed_users.add(r["USER_ID"])
         for t in topics:
             entries = conn.execute(
                 "SELECT s.*, u.GPA FROM SELECTIONS s JOIN USERS u ON u.ID=s.USER_ID"
@@ -910,13 +1007,22 @@ def teacher_lottery():
             entries.sort(key=lambda e: (-e["GPA"], e["ID"]))
             rng.shuffle(entries)
             for i, e in enumerate(entries):
-                if i < t["MAX_NUM"]:
+                if i < t["MAX_NUM"] and e["USER_ID"] not in confirmed_users:
                     conn.execute(
                         "UPDATE SELECTIONS SET STATUS='confirmed', UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
                         (session["user_name"], ts, e["ID"]))
                     log_event(conn, rnd["ID"], t["ID"], e["USER_ID"], "lottery",
                               "entry", "confirmed", operator=session["user_name"],
                               remark=f"抽签中签（种子 {seed}）")
+                    confirmed_users.add(e["USER_ID"])
+                elif e["USER_ID"] in confirmed_users:
+                    # 该生已在其他课题中签（每人限选 1 题），本报名作废并留痕
+                    conn.execute(
+                        "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                        (ts, session["user_name"], ts, e["ID"]))
+                    log_event(conn, rnd["ID"], t["ID"], e["USER_ID"], "lottery",
+                              "entry", "cancelled", operator=session["user_name"],
+                              remark=f"已在其他课题中签，本报名作废（种子 {seed}）")
                 else:
                     q = conn.execute(
                         "SELECT COALESCE(MAX(QUEUE_NO),0)+1 q FROM SELECTIONS"
@@ -929,12 +1035,43 @@ def teacher_lottery():
                               "entry", "waiting", queue_no=q, operator=session["user_name"],
                               remark=f"未中签进候补（种子 {seed}）")
         conn.execute("COMMIT")
-        flash(f"抽签完成（种子：{seed}，任何人可用该种子复现验证结果）", "success")
+        flash(f"抽签完成（种子：{seed}，任何人可用该种子复现验证结果；每人最多中 1 题）", "success")
     except Exception as e:
         conn.execute("ROLLBACK")
         flash(f"抽签失败：{e}", "error")
     finally:
         conn.close()
+    return redirect(url_for("teacher_monitor"))
+
+
+@app.route("/teacher/revoke/<int:selection_id>", methods=["POST"])
+@login_required("teacher")
+def teacher_revoke(selection_id):
+    """教师撤销学生的志愿/报名/候补记录（学生误提交后的补救，留痕可查）"""
+    conn = get_conn()
+    sel = conn.execute(
+        "SELECT s.*, t.TEACHER_ID, t.TOPIC_NAME FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+        " WHERE s.ID=?", (selection_id,)).fetchone()
+    if not sel or sel["STATUS"] not in ("wish", "entry", "waiting"):
+        flash("记录不存在或状态不允许撤销", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    if sel["TEACHER_ID"] != session["user_id"]:
+        flash("无权操作他人课题的记录", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    ts = now_str()
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute(
+        "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, QUEUE_NO=NULL,"
+        " UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+        (ts, session["user_name"], ts, selection_id))
+    log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "cancel",
+              sel["STATUS"], "cancelled", wish_no=sel["WISH_NO"], queue_no=sel["QUEUE_NO"],
+              operator=session["user_name"], remark="教师撤销（志愿/报名/候补）")
+    conn.execute("COMMIT")
+    flash(f"已撤销该同学的《{sel['TOPIC_NAME']}》记录，学生可重新提交", "success")
+    conn.close()
     return redirect(url_for("teacher_monitor"))
 
 
@@ -1129,6 +1266,36 @@ def admin_users():
     return render_template("admin/users.html", users=users, kw=kw, role=role,
                            teachers=teachers, teacher_map=teacher_map,
                            class_suggestions=class_suggestions)
+
+
+# ---------------- 通用：自助修改密码 ----------------
+
+@app.route("/password", methods=["GET", "POST"])
+@login_required("student", "teacher", "admin")
+def change_password():
+    """已登录用户自助修改密码（需验证原密码）"""
+    if request.method == "POST":
+        old = request.form.get("old_password", "")
+        new = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if not new or new != confirm:
+            flash("两次输入的新密码不一致", "error")
+        elif len(new) < 6:
+            flash("新密码长度至少 6 位", "error")
+        else:
+            conn = get_conn()
+            user = current_user(conn)
+            if not check_password_hash(user["PASSWORD_HASH"], old):
+                flash("原密码错误", "error")
+            else:
+                conn.execute(
+                    "UPDATE USERS SET PASSWORD_HASH=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                    (generate_password_hash(new), session["user_name"], now_str(), session["user_id"]))
+                conn.commit()
+                flash("密码修改成功，请牢记新密码", "success")
+            conn.close()
+        return redirect(url_for("change_password"))
+    return render_template("password.html")
 
 
 # ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------

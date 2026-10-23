@@ -1,4 +1,5 @@
-"""全功能回归测试：退选留痕 / 候补递补 / 权限管控 / 多志愿 / 抽签 / 分组限制 / 并发"""
+"""全功能回归测试：退选留痕 / 候补递补 / 权限管控 / 多志愿 / 抽签 / 分组限制 / 并发 / CSRF / 新建轮次"""
+import re
 import sqlite3
 import threading
 import urllib.request
@@ -14,15 +15,35 @@ def check(name, cond, detail=""):
     print(("PASS" if cond else "FAIL"), name, detail)
 
 
-def login(who):
+def fetch_csrf(opener, path="/login"):
+    """从页面 meta 标签获取当前会话的 CSRF 令牌"""
+    try:
+        html = opener.open(BASE + path).read().decode()
+    except Exception:
+        return ""
+    m = re.search(r'name="csrf-token" content="([0-9a-f]+)"', html)
+    return m.group(1) if m else ""
+
+
+def login(who, pwd="123456"):
     cookie = urllib.request.HTTPCookieProcessor()
     opener = urllib.request.build_opener(cookie)
-    data = urllib.parse.urlencode({"username": who, "password": "123456"}).encode()
+    token = fetch_csrf(opener)
+    opener._csrf = token
+    data = urllib.parse.urlencode(
+        {"username": who, "password": pwd, "_csrf_token": token}).encode()
     opener.open(f"{BASE}/login", data)
     return opener
 
 
-def post(opener, path, data=None):
+def post(opener, path, data=None, csrf=True):
+    data = dict(data or {})
+    if csrf:
+        token = getattr(opener, "_csrf", None)
+        if not token:
+            token = fetch_csrf(opener, "/")
+            opener._csrf = token
+        data["_csrf_token"] = token
     body = urllib.parse.urlencode(data, doseq=True).encode() if data else None
     req = urllib.request.Request(BASE + path, data=body, method="POST")
     try:
@@ -131,7 +152,8 @@ conn.close()
 check("账号已停用", st == "disabled")
 cookie = urllib.request.HTTPCookieProcessor()
 op = urllib.request.build_opener(cookie)
-data = urllib.parse.urlencode({"username": "test99", "password": "123456"}).encode()
+token = fetch_csrf(op)
+data = urllib.parse.urlencode({"username": "test99", "password": "123456", "_csrf_token": token}).encode()
 resp = op.open(f"{BASE}/login", data).read().decode()
 check("停用账号无法登录", "已被停用" in resp or "密码错误" in resp or "账号不存在" in resp)
 post(admin, "/admin/users", data={"action": "toggle", "user_id": uid})
@@ -141,12 +163,20 @@ check("教师可访问监控", "选题监控" in get(login("teacher"), "/teacher
 check("管理员不涉及课程业务(不能访问监控)", "无权限" in get(admin, "/teacher/monitor"))
 check("管理员不能访问题库", "无权限" in get(admin, "/teacher/topics"))
 check("管理员可访问用户管理", "用户管理" in get(admin, "/admin/users"))
+# CSRF：缺少令牌的 POST 必须被拒绝
+zhang = login("zhangsan")
+body = post(zhang, "/student/select/5", csrf=False)
+check("缺少 CSRF 令牌的 POST 被拒绝", "表单校验失败" in body)
+# CSRF：页面必须渲染真实的隐藏表单域（防止被转义成文本导致浏览器不提交令牌）
+body = get(zhang, "/password")
+check("表单渲染真实 CSRF 隐藏域", '<input type="hidden" name="_csrf_token"' in body)
 
 # ---------- 5. 未登记用户不能登录 ----------
 print("\n== 5. 未登记用户拒绝 ==")
 cookie = urllib.request.HTTPCookieProcessor()
 op = urllib.request.build_opener(cookie)
-data = urllib.parse.urlencode({"username": "hacker", "password": "123456"}).encode()
+token = fetch_csrf(op)
+data = urllib.parse.urlencode({"username": "hacker", "password": "123456", "_csrf_token": token}).encode()
 resp = op.open(f"{BASE}/login", data).read().decode()
 check("未登记账号被拒绝", "账号不存在" in resp)
 
@@ -178,6 +208,17 @@ zc = sql("SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID W
 check("已命中志愿的其他志愿作废并留痕", zc[0]["c"] == 1)
 check("分配事件已记录", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='allocate'")[0]["c"] >= 3)
 
+# 教师撤销误提交的志愿：重置后由 chenqi 重新填报，教师撤销，学生可再次提交
+reset_round(rule="multi_wish", max_wish=2)
+post(login("chenqi"), "/student/wish", data={"wishes": ["1:T05"]})
+wish_id = sql("SELECT ID FROM SELECTIONS WHERE STATUS='wish' AND USER_ID=(SELECT ID FROM USERS WHERE USER_NAME='chenqi')")[0]["ID"]
+tea = login("teacher")
+body = post(tea, f"/teacher/revoke/{wish_id}")
+check("教师可撤销学生志愿", "已撤销" in body and sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (wish_id,))[0]["STATUS"] == "cancelled")
+check("撤销事件已记录", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='cancel' AND REMARK LIKE '%教师撤销%'")[0]["c"] >= 1)
+body = post(login("chenqi"), "/student/wish", data={"wishes": ["1:T06"]})
+check("撤销后学生可重新提交志愿", "成功" in body)
+
 # ---------- 8. 随机抽签 ----------
 print("\n== 8. 随机抽签 ==")
 reset_round(rule="lottery", lottery_seed="SEED-2026")
@@ -190,6 +231,18 @@ wait = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE STATUS='waiting' AND TOPIC_I
 check("抽签后确认数=上限", conf == 2, f"conf={conf}")
 check("未中签进候补", wait == 3, f"wait={wait}")
 check("抽签种子写入日志", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='lottery' AND REMARK LIKE '%SEED-2026%'")[0]["c"] >= 5)
+
+# 同一学生报名多个题目：每人最多中 1 题，不得因唯一索引冲突导致整体失败
+reset_round(rule="lottery", lottery_seed="SEED-MULTI")
+for who in ["zhangsan", "lisi", "wangwu"]:
+    post(login(who), "/student/wish", data={"wishes": ["1:T05", "1:T06"]})  # T05上限2 / T06上限4
+body = post(login("teacher"), "/teacher/lottery")
+check("多题报名抽签不失败", "抽签完成" in body)
+dup = sql("SELECT COUNT(*) c FROM (SELECT USER_ID FROM SELECTIONS WHERE STATUS='confirmed' GROUP BY USER_ID HAVING COUNT(*)>1)")[0]["c"]
+check("抽签后无学生重复中签", dup == 0)
+conf_total = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE STATUS='confirmed'")[0]["c"]
+check("每人最多中1题", conf_total <= 3, f"conf={conf_total}")
+check("多中作废记录留痕", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE REMARK LIKE '%已在其他课题中签%'")[0]["c"] >= 1)
 
 # ---------- 9. 并发防超卖 ----------
 print("\n== 9. 并发防超卖 ==")
@@ -217,7 +270,9 @@ lock = threading.Lock()
 def grab(i):
     op = login(f"cc{i}")
     try:
-        op.open(urllib.request.Request(f"{BASE}/student/select/2", method="POST"))
+        op.open(urllib.request.Request(f"{BASE}/student/select/2", method="POST",
+                                       data=urllib.parse.urlencode(
+                                           {"_csrf_token": op._csrf}).encode()))
     except Exception:
         pass
 
@@ -248,6 +303,13 @@ t2 = login("teacher2")
 post(t2, "/teacher/topics", data={"action": "add", "topic_code": "U01", "topic_name": "王老师的课题A",
                                   "tag": "数据分析", "difficulty": "中等", "max_num": "2"})
 check("teacher2 发布自己的课题", sql("SELECT COUNT(*) c FROM TOPICS WHERE TOPIC_CODE='U01' AND TEACHER_ID=?", (T2,))[0]["c"] == 1)
+# teacher2 通过「新建轮次」自建选题轮次（新功能）
+body = post(t2, "/teacher/round", data={"action": "create", "round_name": "T2测试轮次",
+                                        "rule": "first_come", "start_at": "2020-01-01 00:00:00",
+                                        "end_at": "2030-01-01 00:00:00", "status": "open"})
+check("教师可自建选题轮次", "已创建" in body and sql("SELECT COUNT(*) c FROM ROUNDS WHERE TEACHER_ID=?", (T2,))[0]["c"] >= 1)
+body = get(t2, "/teacher/round")
+check("轮次页展示轮次列表", "我的轮次" in body)
 # stu_of_t2 只能看到 U01，看不到刘老师的 T05
 body = get(login("stu_of_t2"), "/student/browse")
 check("stu_of_t2 看不到其他老师的课题", "U01" in body and "T05" not in body and "区块链" not in body)
@@ -279,6 +341,11 @@ body = get(login("teacher"), "/teacher/students")
 check("我的学生页可访问", "我的学生" in body and "同学A" in body)
 check("学生不能访问教师页", "无权限" in get(login("zhangsan"), "/teacher/students"))
 tea = login("teacher")
+# 清理上次运行残留的同名公告，保证断言可重复执行
+conn = sqlite3.connect(DB)
+conn.execute("DELETE FROM ANNOUNCEMENTS WHERE TITLE='本周五截止选题'")
+conn.commit()
+conn.close()
 post(tea, "/teacher/announce", data={"action": "add", "title": "本周五截止选题", "content": "请尽快完成选题"})
 check("教师发布公告", sql("SELECT COUNT(*) c FROM ANNOUNCEMENTS WHERE TITLE='本周五截止选题'")[0]["c"] == 1)
 body = get(login("zhangsan"), "/student/index")
@@ -315,6 +382,42 @@ check("教师首页显示管理的班级", "软工2301" in body and "软工2302"
 # 题库页显示面向班级列
 body = get(tea, "/teacher/topics")
 check("题库页显示面向班级", "面向班级" in body and "软工2302" in body)
+
+# ---------- 13. 课题关闭与重新开放 ----------
+print("\n== 13. 课题关闭与开放 ==")
+reset_round()
+tea = login("teacher")
+body = post(tea, "/teacher/topics", data={"action": "toggle", "topic_id": 1})  # T01 图书管理系统
+check("教师可关闭课题", "已关闭" in body and sql("SELECT STATUS FROM TOPICS WHERE ID=1")[0]["STATUS"] == "closed")
+body = get(login("zhangsan"), "/student/browse")
+check("关闭后学生不可见", "图书管理系统" not in body)
+body = post(tea, "/teacher/topics", data={"action": "toggle", "topic_id": 1})
+check("教师可重新开放课题", "重新开放" in body and sql("SELECT STATUS FROM TOPICS WHERE ID=1")[0]["STATUS"] == "open")
+body = get(login("zhangsan"), "/student/browse")
+check("重新开放后学生可见", "图书管理系统" in body)
+
+# ---------- 14. 自助修改密码 ----------
+print("\n== 14. 自助修改密码 ==")
+uid99 = sql("SELECT ID FROM USERS WHERE USER_NAME='test99'")[0]["ID"]
+body = get(login("test99"), "/password")
+check("修改密码页可访问", "修改密码" in body)
+t99 = login("test99")
+body = post(t99, "/password", data={"old_password": "123456", "new_password": "abc12345",
+                                    "confirm_password": "abc12345"})
+check("修改密码成功", "修改成功" in body)
+cookie = urllib.request.HTTPCookieProcessor()
+op = urllib.request.build_opener(cookie)
+token = fetch_csrf(op)
+resp = op.open(f"{BASE}/login", urllib.parse.urlencode(
+    {"username": "test99", "password": "123456", "_csrf_token": token}).encode()).read().decode()
+check("旧密码无法登录", "密码错误" in resp or "账号不存在" in resp)
+check("新密码可登录", "首页" in get(login("test99", "abc12345"), "/student/index"))
+body = post(login("test99", "abc12345"), "/password", data={"old_password": "000000", "new_password": "abc12345",
+                                                             "confirm_password": "abc12345"})
+check("原密码错误被拒绝", "原密码错误" in body)
+admin = login("admin")
+post(admin, "/admin/users", data={"action": "reset_pwd", "user_id": uid99})
+check("管理员可重置密码", "首页" in get(login("test99"), "/student/index"))
 
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")

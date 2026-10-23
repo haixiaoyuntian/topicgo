@@ -11,6 +11,7 @@
 <div class="card">
   <h3>发布新公告</h3>
   <form method="post" class="vform">
+    {{ csrf_input() }}
     <input type="hidden" name="action" value="add">
     <div class="form-item"><label>标题</label><input name="title" required placeholder="如：选题截止提醒"></div>
     <div class="form-item"><label>内容</label><textarea name="content" rows="4" placeholder="公告正文（选填）"></textarea></div>
@@ -30,6 +31,7 @@
         <td>{{ a.PUBLISHED_AT }}</td>
         <td>
           <form method="post" style="display:inline;" onsubmit="return confirm('确认撤回该公告？')">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="ann_id" value="{{ a.ID }}">
             <button class="btn btn-danger btn-sm">撤回</button>

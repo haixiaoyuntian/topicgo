@@ -13,81 +13,126 @@
       <p>④ <b>随机抽签</b>：学生自由报名，你点「执行公开抽签」；种子建议填写并向全班公布，任何人可复现验证，公平性最强。</p>
       <p><b>递补方式：</b>自动递补（退选立即递补候补首位）／教师手动递补（更审慎，防恶意退选）／不递补。</p>
       <p><b>分组轮选：</b>「允许选题的班级」可限制本轮仅特定班级参与（如第一轮只开放软工2301）。</p>
+      <p><b>多轮次：</b>可以创建多个轮次（如第一轮/补选轮），系统始终以<b>最新创建</b>的轮次为当前轮次；历史轮次可在下方列表中查看。</p>
     </div>
   </details>
-  <h3>选题轮次设置</h3>
+
+  {# 轮次表单字段宏：编辑与新建共用，prefix 用于区分页面元素 ID #}
+  {% macro round_fields(r, action, prefix) %}
+  <input type="hidden" name="action" value="{{ action }}">
+  {% if action == 'save' %}<input type="hidden" name="round_id" value="{{ r.ID }}">{% endif %}
+  <div class="form-item"><label>轮次名称</label>
+    <input name="round_name" value="{{ r.ROUND_NAME if r else '' }}" required placeholder="如：2026秋季课设选题·第一轮"></div>
+  <div class="form-item"><label>选题策略（公平性维度）</label>
+    <select name="rule" class="rule-select" onchange="toggleRuleFields(this.form)">
+      {% for key, name in rule_names.items() %}
+      <option value="{{ key }}" {{ 'selected' if r and r.RULE==key }}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <p class="flow-tip rule-desc"></p>
+  </div>
+  <div class="form-item"><label>选题开始时间</label>
+    <input name="start_at" value="{{ r.START_AT if r else '' }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
+  <div class="form-item"><label>选题截止时间</label>
+    <input name="end_at" value="{{ r.END_AT if r else '' }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
+  <div class="form-item"><label>候补开关</label>
+    <select name="waitlist_on">
+      <option value="1" {{ 'selected' if not r or r.WAITLIST_ON }}>开启（满员可入候补）</option>
+      <option value="0" {{ 'selected' if r and not r.WAITLIST_ON }}>关闭</option>
+    </select>
+  </div>
+  <div class="form-item"><label>递补方式</label>
+    <select name="promote_mode">
+      <option value="auto" {{ 'selected' if not r or r.PROMOTE_MODE=='auto' }}>自动递补（退选后候补首位立即递补）</option>
+      <option value="manual" {{ 'selected' if r and r.PROMOTE_MODE=='manual' }}>教师手动递补（更审慎，防恶意退选）</option>
+      <option value="off" {{ 'selected' if r and r.PROMOTE_MODE=='off' }}>不递补</option>
+    </select>
+  </div>
+  <div class="form-item wish-field"><label>每人志愿数（多志愿模式）</label>
+    <input name="max_wish" type="number" min="1" max="5" value="{{ r.MAX_WISH if r else 3 }}"></div>
+  <div class="form-item seed-field"><label>抽签种子（随机抽签模式，公开可复现）</label>
+    <input name="lottery_seed" value="{{ r.LOTTERY_SEED if r and r.LOTTERY_SEED else '' }}" placeholder="留空则按轮次自动生成；公布后任何人可复现验证"></div>
+  <div class="form-item"><label>分组轮选：允许选题的班级</label>
+    <div class="ms" data-all-label="不限班级" title="不选=不限班级">
+      <button type="button" class="ms-toggle">允许班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
+      <div class="ms-panel">
+        {% for c in classes %}
+        <label><input type="checkbox" value="{{ c.name }}"
+          {{ 'checked' if r and r.ALLOW_CLASSES and c.name in (r.ALLOW_CLASSES or '').split(',') }}> {{ c.name }}（{{ c.count }}人）</label>
+        {% endfor %}
+        {% if not classes %}<div class="ms-all">暂无可选班级</div>{% endif %}
+        <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
+      </div>
+      <input type="hidden" class="ms-hidden" name="allow_classes" value="{{ r.ALLOW_CLASSES if r and r.ALLOW_CLASSES else '' }}">
+    </div>
+    <p class="flow-tip">不选 = 不限班级（你名下所有学生都可选题）；勾选后本轮仅这些班级可参与。</p>
+  </div>
+  <div class="form-item"><label>轮次状态</label>
+    <select name="status">
+      <option value="open" {{ 'selected' if not r or r.STATUS=='open' }}>开放</option>
+      <option value="closed" {{ 'selected' if r and r.STATUS=='closed' }}>关闭</option>
+    </select>
+  </div>
+  {% endmacro %}
+
+  <h3>当前轮次设置{% if round %}（{{ round.ROUND_NAME }}）{% endif %}</h3>
   {% if round %}
   <form method="post" class="vform">
-    <input type="hidden" name="round_id" value="{{ round.ID }}">
-    <div class="form-item"><label>轮次名称</label><input name="round_name" value="{{ round.ROUND_NAME }}" required></div>
-    <div class="form-item"><label>选题策略（公平性维度）</label>
-      <select name="rule" id="rule-select" onchange="toggleRuleFields()">
-        {% for key, name in rule_names.items() %}
-        <option value="{{ key }}" {{ 'selected' if round.RULE==key }}>{{ name }}</option>
-        {% endfor %}
-      </select>
-      <p class="flow-tip" id="rule-desc"></p>
-    </div>
-    <div class="form-item"><label>选题开始时间</label><input name="start_at" value="{{ round.START_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
-    <div class="form-item"><label>选题截止时间</label><input name="end_at" value="{{ round.END_AT }}" required placeholder="YYYY-MM-DD HH:MM:SS"></div>
-    <div class="form-item"><label>候补开关</label>
-      <select name="waitlist_on">
-        <option value="1" {{ 'selected' if round.WAITLIST_ON }}>开启（满员可入候补）</option>
-        <option value="0" {{ 'selected' if not round.WAITLIST_ON }}>关闭</option>
-      </select>
-    </div>
-    <div class="form-item"><label>递补方式</label>
-      <select name="promote_mode">
-        <option value="auto" {{ 'selected' if round.PROMOTE_MODE=='auto' }}>自动递补（退选后候补首位立即递补）</option>
-        <option value="manual" {{ 'selected' if round.PROMOTE_MODE=='manual' }}>教师手动递补（更审慎，防恶意退选）</option>
-        <option value="off" {{ 'selected' if round.PROMOTE_MODE=='off' }}>不递补</option>
-      </select>
-    </div>
-    <div class="form-item" id="wish-field"><label>每人志愿数（多志愿模式）</label>
-      <input name="max_wish" type="number" min="1" max="5" value="{{ round.MAX_WISH }}"></div>
-    <div class="form-item" id="seed-field"><label>抽签种子（随机抽签模式，公开可复现）</label>
-      <input name="lottery_seed" value="{{ round.LOTTERY_SEED or '' }}" placeholder="留空则按轮次自动生成；公布后任何人可复现验证"></div>
-    <div class="form-item"><label>分组轮选：允许选题的班级</label>
-      <div class="ms" data-all-label="不限班级" title="不选=不限班级">
-        <button type="button" class="ms-toggle">允许班级 <span class="ms-summary"></span><span class="ms-caret">▾</span></button>
-        <div class="ms-panel">
-          {% for c in classes %}
-          <label><input type="checkbox" value="{{ c.name }}"
-            {{ 'checked' if round.ALLOW_CLASSES and c.name in (round.ALLOW_CLASSES or '').split(',') }}> {{ c.name }}（{{ c.count }}人）</label>
-          {% endfor %}
-          {% if not classes %}<div class="ms-all">暂无可选班级</div>{% endif %}
-          <div class="ms-actions"><button type="button" onclick="this.closest('.ms').querySelectorAll('input').forEach(function(i){i.checked=false});updateMsSummary(this.closest('.ms'))">全不选</button></div>
-        </div>
-        <input type="hidden" class="ms-hidden" name="allow_classes" value="{{ round.ALLOW_CLASSES or '' }}">
-      </div>
-      <p class="flow-tip">不选 = 不限班级（你名下所有学生都可选题）；勾选后本轮仅这些班级可参与。</p>
-    </div>
-    <div class="form-item"><label>轮次状态</label>
-      <select name="status">
-        <option value="open" {{ 'selected' if round.STATUS=='open' }}>开放</option>
-        <option value="closed" {{ 'selected' if round.STATUS=='closed' }}>关闭</option>
-      </select>
-    </div>
+    {{ csrf_input() }}
+    {{ round_fields(round, 'save', 'edit') }}
     <button class="btn btn-primary" type="submit">保存设置</button>
   </form>
   {% else %}
-  <p class="empty">尚未创建选题轮次。</p>
+  <p class="empty">尚未创建选题轮次，请先在下方「新建轮次」中创建。</p>
   {% endif %}
 </div>
+
+<div class="card">
+  <h3>新建轮次
+    <button class="btn btn-primary btn-sm" style="float:right;" onclick="document.getElementById('create-form').style.display='block'">+ 新建轮次</button>
+  </h3>
+  <p class="flow-tip">创建后立即成为当前轮次（最新轮次优先）；可用于第二轮、补选轮等场景。</p>
+  <form id="create-form" method="post" class="vform" style="display:none;">
+    {{ csrf_input() }}
+    {{ round_fields(None, 'create', 'create') }}
+    <button class="btn btn-primary" type="submit">创建轮次</button>
+  </form>
+</div>
+
+{% if rounds %}
+<div class="card">
+  <h3>我的轮次（共 {{ rounds|length }} 个，最新创建的为当前轮次）</h3>
+  <table>
+    <thead><tr><th>轮次名称</th><th>策略</th><th>时间窗口</th><th>递补</th><th>允许班级</th><th>状态</th></tr></thead>
+    <tbody>
+    {% for r in rounds %}
+      <tr>
+        <td>{{ r.ROUND_NAME }}{% if loop.first %}<span class="tag tag-green">当前</span>{% endif %}</td>
+        <td>{{ rule_names.get(r.RULE, r.RULE) }}</td>
+        <td>{{ r.START_AT }} ~ {{ r.END_AT }}</td>
+        <td>{% if r.PROMOTE_MODE=='auto' %}自动{% elif r.PROMOTE_MODE=='manual' %}手动{% else %}不递补{% endif %}</td>
+        <td>{% if not r.ALLOW_CLASSES %}<span class="tag tag-green">不限</span>{% else %}{{ r.ALLOW_CLASSES }}{% endif %}</td>
+        <td>{% if r.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <script>
 const RULE_DESC = {
   first_come: '先到先得：窗口内实时抢占，考验手速，系统事务保证不超卖。',
   gpa_priority: '绩点优先：按绩点排名依次放行，高绩点同学先选，兼顾学业表现。',
   multi_wish: '多志愿分配：每人填多个志愿，结束后统一分配，同志愿超员按绩点优先，未命中转候补。',
-  lottery: '随机抽签：窗口内自由报名不限名额，结束后用公开种子随机抽签，结果可复现、可审计。'
+  lottery: '随机抽签：窗口内自由报名不限名额，结束后用公开种子随机抽签，每人最多中 1 题，结果可复现、可审计。'
 };
-function toggleRuleFields() {
-  const rule = document.getElementById('rule-select').value;
-  document.getElementById('rule-desc').innerText = RULE_DESC[rule] || '';
-  document.getElementById('wish-field').style.display = rule === 'multi_wish' ? 'block' : 'none';
-  document.getElementById('seed-field').style.display = rule === 'lottery' ? 'block' : 'none';
+function toggleRuleFields(form) {
+  const rule = form.querySelector('.rule-select').value;
+  form.querySelector('.rule-desc').innerText = RULE_DESC[rule] || '';
+  form.querySelector('.wish-field').style.display = rule === 'multi_wish' ? 'block' : 'none';
+  form.querySelector('.seed-field').style.display = rule === 'lottery' ? 'block' : 'none';
 }
-toggleRuleFields();
+document.querySelectorAll('form.vform').forEach(toggleRuleFields);
 </script>
 {% endblock %}

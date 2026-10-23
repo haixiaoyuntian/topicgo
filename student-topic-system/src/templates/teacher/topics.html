@@ -27,6 +27,7 @@
   </details>
 
   <form id="add-form" method="post" class="inline-form" style="display:none;">
+    {{ csrf_input() }}
     <input type="hidden" name="action" value="add">
     <input name="topic_code" placeholder="编号 T07" required>
     <input name="topic_name" placeholder="题目名称" required style="min-width:220px;">
@@ -59,6 +60,7 @@
         <td>
           <span class="td-name">{{ t.TOPIC_NAME }}</span>
           <form method="post" class="inline-form edit-form">
+            {{ csrf_input() }}
             <input type="hidden" name="action" value="edit">
             <input type="hidden" name="topic_id" value="{{ t.ID }}">
             <input name="topic_name" value="{{ t.TOPIC_NAME }}" required>
@@ -92,8 +94,15 @@
         <td>{% if t.STATUS=='open' %}<span class="tag tag-green">开放</span>{% else %}<span class="tag tag-red">关闭</span>{% endif %}</td>
         <td>
           <button class="btn btn-default btn-sm" onclick="var f=this.closest('tr').querySelector('.edit-form');f.style.display='flex';this.closest('tr').querySelector('.td-name').style.display='none';">编辑</button>
+          <form method="post" style="display:inline;" onsubmit="return confirm('确认{{ '关闭' if t.STATUS=='open' else '开放' }}该课题？')">
+            {{ csrf_input() }}
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="topic_id" value="{{ t.ID }}">
+            <button class="btn btn-default btn-sm">{{ '关闭' if t.STATUS=='open' else '开放' }}</button>
+          </form>
           <form method="post" action="{{ url_for('teacher_topic_delete', topic_id=t.ID) }}" style="display:inline;"
                 onsubmit="return confirm('确认删除该题目？')">
+            {{ csrf_input() }}
             <button class="btn btn-danger btn-sm">删除</button>
           </form>
         </td>

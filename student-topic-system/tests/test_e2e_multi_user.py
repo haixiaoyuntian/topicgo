@@ -7,6 +7,7 @@
 
 验证点：并发选题不超卖、班级隔离、候补递补、志愿分配、数据可见性、日志隔离
 """
+import re
 import sqlite3
 import threading
 import urllib.request
@@ -32,14 +33,32 @@ def sql(q, args=()):
     return rows
 
 
+def fetch_csrf(op, path="/login"):
+    """从页面 meta 标签获取当前会话的 CSRF 令牌"""
+    try:
+        html = op.open(BASE + path).read().decode()
+    except Exception:
+        return ""
+    m = re.search(r'name="csrf-token" content="([0-9a-f]+)"', html)
+    return m.group(1) if m else ""
+
+
 def login(who):
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+    token = fetch_csrf(op)
+    op._csrf = token
     op.open(BASE + "/login", urllib.parse.urlencode(
-        {"username": who, "password": "123456"}).encode())
+        {"username": who, "password": "123456", "_csrf_token": token}).encode())
     return op
 
 
 def post(op, path, data=None):
+    data = dict(data or {})
+    token = getattr(op, "_csrf", None)
+    if not token:
+        token = fetch_csrf(op, "/")
+        op._csrf = token
+    data["_csrf_token"] = token
     body = urllib.parse.urlencode(data, doseq=True).encode() if data else None
     try:
         return op.open(urllib.request.Request(BASE + path, data=body, method="POST")).read().decode()
@@ -75,6 +94,11 @@ for code in ["TP01", "TP02", "TP03", "TP04"]:
         conn.execute("DELETE FROM SELECTIONS WHERE TOPIC_ID=?", (row[0],))
         conn.execute("DELETE FROM SELECTION_EVENTS WHERE TOPIC_ID=?", (row[0],))
         conn.execute("DELETE FROM TOPICS WHERE ID=?", (row[0],))
+# 清理两位 E2E 教师的历史轮次（学生记录已在上面删除，不会产生孤儿记录）
+for tname in ["e2e_t1", "e2e_t2"]:
+    trow = conn.execute("SELECT ID FROM USERS WHERE USER_NAME=?", (tname,)).fetchone()
+    if trow:
+        conn.execute("DELETE FROM ROUNDS WHERE TEACHER_ID=?", (trow[0],))
 conn.commit()
 ts = "2026-01-01 00:00:00"
 for no, name, real, role in [("E2E_T1", "e2e_t1", "王老师", "teacher"),
@@ -112,27 +136,16 @@ post(t2, "/teacher/topics", data={"action": "add", "topic_code": "TP04", "topic_
 check("t1 发布 2 个课题", sql("SELECT COUNT(*) c FROM TOPICS WHERE TEACHER_ID=? AND TOPIC_CODE LIKE 'TP0%'", (uid("e2e_t1"),))[0]["c"] == 2)
 check("t2 发布 2 个课题", sql("SELECT COUNT(*) c FROM TOPICS WHERE TEACHER_ID=? AND TOPIC_CODE LIKE 'TP0%'", (uid("e2e_t2"),))[0]["c"] == 2)
 
-# ---------- 2. 开放轮次（t1先到先得 / t2多志愿） ----------
+# ---------- 2. 开放轮次（t1先到先得 / t2多志愿，走「新建轮次」接口） ----------
 print("\n== 2. 开放轮次 ==")
-r1 = sql("SELECT ID FROM ROUNDS WHERE TEACHER_ID=?", (uid("e2e_t1"),))
-if not r1:
-    conn = sqlite3.connect(DB)
-    conn.execute("INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-                 " VALUES('E2E轮次-t1',?,'first_come','2020-01-01','2030-01-01','open','e2e','2026-01-01',1)", (uid("e2e_t1"),))
-    conn.commit(); conn.close()
-r2 = sql("SELECT ID FROM ROUNDS WHERE TEACHER_ID=?", (uid("e2e_t2"),))
-if not r2:
-    conn = sqlite3.connect(DB)
-    conn.execute("INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,STATUS,CREATED_BY,CREATED_AT,FLAG)"
-                 " VALUES('E2E轮次-t2',?,'multi_wish','2020-01-01','2030-01-01','open','e2e','2026-01-01',1)", (uid("e2e_t2"),))
-    conn.commit(); conn.close()
-else:
-    conn = sqlite3.connect(DB)
-    conn.execute("UPDATE ROUNDS SET RULE='multi_wish', START_AT='2020-01-01', END_AT='2030-01-01', STATUS='open' WHERE ID=?", (r2[0]["ID"],))
-    conn.commit(); conn.close()
-conn = sqlite3.connect(DB)
-conn.execute("UPDATE ROUNDS SET RULE='first_come', START_AT='2020-01-01', END_AT='2030-01-01', STATUS='open' WHERE TEACHER_ID=?", (uid("e2e_t1"),))
-conn.commit(); conn.close()
+post(login("e2e_t1"), "/teacher/round", data={"action": "create", "round_name": "E2E轮次-t1",
+                                              "rule": "first_come", "start_at": "2020-01-01 00:00:00",
+                                              "end_at": "2030-01-01 00:00:00", "status": "open",
+                                              "waitlist_on": "1", "promote_mode": "auto"})
+post(login("e2e_t2"), "/teacher/round", data={"action": "create", "round_name": "E2E轮次-t2",
+                                              "rule": "multi_wish", "start_at": "2020-01-01 00:00:00",
+                                              "end_at": "2030-01-01 00:00:00", "status": "open",
+                                              "waitlist_on": "1", "promote_mode": "auto"})
 check("t1/t2 轮次已开放", len(sql("SELECT ID FROM ROUNDS WHERE TEACHER_ID IN (?,?) AND STATUS='open'", (uid("e2e_t1"), uid("e2e_t2")))) == 2)
 
 # ---------- 3. 并发抢课：A班4人抢 TP01（上限2） ----------

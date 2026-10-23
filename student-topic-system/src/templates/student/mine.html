@@ -24,6 +24,7 @@
           {% if r.STATUS in ('confirmed','waiting') %}
           <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
                 onsubmit="return confirm('确认退选？退选记录将保留，名额按递补策略处理。')">
+            {{ csrf_input() }}
             <button class="btn btn-danger btn-sm">退选</button>
           </form>
           {% else %}-{% endif %}

@@ -80,10 +80,12 @@
           {% elif not round or not class_ok or not advisor %}<button class="btn btn-default btn-sm" disabled>不可选</button>
           {% elif left > 0 %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
+            {{ csrf_input() }}
             <button class="btn btn-primary btn-sm" onclick="return confirm('确认选择《{{ t.TOPIC_NAME }}》？每人限选 1 题。')">选题</button>
           </form>
           {% elif round.WAITLIST_ON %}
           <form method="post" action="{{ url_for('student_select', topic_id=t.ID) }}" style="display:inline;">
+            {{ csrf_input() }}
             <button class="btn btn-default btn-sm" onclick="return confirm('该题已满员，加入候补队列？')">加入候补</button>
           </form>
           {% else %}<button class="btn btn-default btn-sm" disabled>已满员</button>{% endif %}
