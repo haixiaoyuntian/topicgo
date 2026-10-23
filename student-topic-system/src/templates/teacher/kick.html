@@ -13,7 +13,7 @@
   <table>
     <tbody>
       <tr><td style="width:120px;">学生</td><td>{{ sel.REAL_NAME }}（{{ sel.USER_NO }}｜{{ sel.CLASS_NAME or '-' }}｜绩点 {{ sel.GPA }}）</td></tr>
-      <tr><td>选题</td><td>{{ sel.TOPIC_CODE }} 《{{ sel.TOPIC_NAME }}》（{{ '已确认' if sel.STATUS=='confirmed' else '候补中' }}）</td></tr>
+      <tr><td>选题</td><td>{{ sel.TOPIC_CODE }} 《{{ sel.TOPIC_NAME }}》（{{ {'confirmed':'已确认','waiting':'候补中','wish':'志愿待分配','entry':'待抽签'}.get(sel.STATUS, sel.STATUS) }}）</td></tr>
       <tr><td>前置要求</td><td>{{ topic.PREREQ_TEXT or '（未设置）' }}</td></tr>
       <tr><td>核验结果</td><td>
         {% if prereq_ok %}<span class="tag tag-green">已满足前置要求</span>

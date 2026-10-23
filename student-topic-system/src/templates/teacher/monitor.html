@@ -101,21 +101,31 @@
 
 {% if pending %}
 <div class="card">
-  <h3>待分配/待抽签名单（可撤销误提交）</h3>
+  <h3>待分配/待抽签名单（可撤销误提交或按前置要求退课）</h3>
   <table>
-    <thead><tr><th>题目</th><th>学号</th><th>姓名</th><th>绩点</th><th>类型</th><th>志愿序号</th><th>操作</th></tr></thead>
+    <thead><tr><th>题目</th><th>学号</th><th>姓名</th><th>绩点</th><th>类型</th><th>志愿序号</th><th>前置核验</th><th>操作</th></tr></thead>
     <tbody>
     {% for p in pending %}
-      <tr>
-        <td>{{ p.TOPIC_CODE }} {{ p.TOPIC_NAME }}</td>
-        <td>{{ p.USER_NO }}</td>
-        <td>{{ p.REAL_NAME }}</td>
-        <td>{{ p.GPA }}</td>
-        <td>{% if p.STATUS=='wish' %}<span class="tag tag-blue">志愿</span>{% else %}<span class="tag tag-blue">报名</span>{% endif %}</td>
-        <td>{{ p.WISH_NO or '-' }}</td>
+      <tr class="{{ 'row-warn' if not p.prereq_ok }}">
+        <td>{{ p.sel.TOPIC_CODE }} {{ p.sel.TOPIC_NAME }}</td>
+        <td>{{ p.sel.USER_NO }}</td>
+        <td>{{ p.sel.REAL_NAME }}</td>
+        <td>{{ p.sel.GPA }}</td>
+        <td>{% if p.sel.STATUS=='wish' %}<span class="tag tag-blue">志愿</span>{% else %}<span class="tag tag-blue">报名</span>{% endif %}</td>
+        <td>{{ p.sel.WISH_NO or '-' }}</td>
         <td>
-          <form method="post" action="{{ url_for('teacher_revoke', selection_id=p.ID) }}" style="display:inline;"
-                onsubmit="return confirm('确认撤销 {{ p.REAL_NAME }} 的该条记录？撤销后学生可重新提交。')">
+          {% if not p.sel.PREREQ_RULES %}<span class="tag tag-green">无前置要求</span>
+          {% elif p.prereq_ok %}<span class="tag tag-green">满足</span>
+          {% else %}<span class="tag tag-red">不满足</span>
+            <div class="flow-tip" style="margin:2px 0 0;">{% for cname, need, actual in p.missing %}{{ cname }} 需≥{{ need }}，实际{{ actual if actual is not none else '未录入' }}；{% endfor %}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if not p.prereq_ok %}
+          <a class="btn btn-danger btn-sm" href="{{ url_for('teacher_kick', selection_id=p.sel.ID) }}">退课</a>
+          {% endif %}
+          <form method="post" action="{{ url_for('teacher_revoke', selection_id=p.sel.ID) }}" style="display:inline;"
+                onsubmit="return confirm('确认撤销 {{ p.sel.REAL_NAME }} 的该条记录？撤销后学生可重新提交。')">
             {{ csrf_input() }}
             <button class="btn btn-danger btn-sm">撤销</button>
           </form>

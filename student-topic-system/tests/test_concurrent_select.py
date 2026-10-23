@@ -31,7 +31,8 @@ topic_id = conn.execute("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T03'").fetchone
 # 重置 T03 选题记录，并清空测试学生在其它题目上的选题（保证限选1题不干扰）
 conn.execute("DELETE FROM SELECTIONS WHERE TOPIC_ID=?", (topic_id,))
 conn.execute("DELETE FROM SELECTIONS WHERE USER_ID IN (SELECT ID FROM USERS WHERE USER_NAME LIKE 'test%')")
-conn.execute("UPDATE ROUNDS SET START_AT='2020-01-01 00:00:00', END_AT='2030-01-01 00:00:00'")
+conn.execute("UPDATE ROUNDS SET RULE='first_come', START_AT='2020-01-01 00:00:00', END_AT='2030-01-01 00:00:00',"
+             " WAITLIST_ON=1, ALLOW_CLASSES=NULL, PROMOTE_MODE='auto', STATUS='open'")
 conn.commit()
 max_num = conn.execute("SELECT MAX_NUM FROM TOPICS WHERE ID=?", (topic_id,)).fetchone()[0]
 conn.close()

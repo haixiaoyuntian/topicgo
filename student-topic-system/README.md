@@ -91,7 +91,7 @@ python app.py
 ```bash
 # 先启动服务（cd src && python app.py），再在 src 目录下运行测试
 python ../tests/test_concurrent_select.py   # 并发防超卖
-python ../tests/test_regression.py          # 全功能回归（103 项断言）
+python ../tests/test_regression.py          # 全功能回归（115 项断言）
 python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
 python ../tests/demo_seed.py                # 生成多人演示账号
 

@@ -547,6 +547,60 @@ check("满足前置要求可正常选题",
       sql("SELECT COUNT(*) c FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid_ww,))[0]["c"] == 1)
 check("管理员不能访问学生成绩页", "无权限" in get(login("admin"), "/teacher/students"))
 
+# ---------- 18. 缺陷回归（分配超配/关闭课题/志愿阶段退课/表单校验） ----------
+print("\n== 18. 缺陷回归 ==")
+conn = sqlite3.connect(DB)
+conn.execute("DELETE FROM NOTICES")
+conn.commit()
+conn.close()
+
+# 18.1 分配时跳过已关闭课题（志愿作废并留痕）
+reset_round(rule="multi_wish", max_wish=2)
+post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T06"]})
+tid_t06 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T06'")[0]["ID"]
+post(login("teacher"), "/teacher/topics", data={"action": "toggle", "topic_id": tid_t06})
+post(login("teacher"), "/teacher/allocate")
+w6 = sql("SELECT STATUS FROM SELECTIONS WHERE TOPIC_ID=?", (tid_t06,))
+check("关闭课题的志愿被作废", len(w6) == 1 and w6[0]["STATUS"] == "cancelled")
+check("作废事件留痕", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE REMARK LIKE '%课题已关闭%'")[0]["c"] >= 1)
+post(login("teacher"), "/teacher/topics", data={"action": "toggle", "topic_id": tid_t06})  # 恢复开放
+
+# 18.2 分配计入已有确认数（规则切换后不超分配）
+reset_round(rule="first_come", max_wish=2)
+post(login("zhangsan"), "/student/select/3")   # T03 上限2
+post(login("lisi"), "/student/select/3")
+post(login("teacher"), "/teacher/round", data={"action": "save", "round_id": rid, "round_name": "t",
+     "rule": "multi_wish", "start_at": "2020-01-01 00:00:00", "end_at": "2030-01-01 00:00:00",
+     "waitlist_on": "1", "promote_mode": "auto", "max_wish": "2", "status": "open"})
+post(login("wangwu"), "/student/wish", data={"wishes": ["1:T03"]})
+post(login("teacher"), "/teacher/allocate")
+tid_t03 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T03'")[0]["ID"]
+conf3 = sql("SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS='confirmed'", (tid_t03,))[0]["c"]
+check("规则切换后分配不超上限", conf3 == 2, f"conf={conf3}")
+check("落选志愿转候补", sql("SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS='waiting'", (tid_t03,))[0]["c"] == 1)
+
+# 18.3 志愿/报名阶段即可按前置要求退课
+reset_round(rule="multi_wish", max_wish=2)
+post(login("chenqi"), "/student/wish", data={"wishes": ["1:T03"]})
+wid = sql("SELECT ID FROM SELECTIONS WHERE STATUS='wish' AND USER_ID=(SELECT ID FROM USERS WHERE USER_NAME='chenqi')")[0]["ID"]
+body = post(login("teacher"), f"/teacher/kick/{wid}",
+            data={"reason": "数据结构58分未达到75分前置门槛。", "advice": "建议先复习数据结构，本轮可选T01。"})
+check("教师可退掉志愿阶段记录", "已退掉" in body)
+check("志愿记录已取消", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (wid,))[0]["STATUS"] == "cancelled")
+nt = sql("SELECT TITLE, CONTENT FROM NOTICES WHERE USER_ID=(SELECT ID FROM USERS WHERE USER_NAME='chenqi')")
+check("通知文案适配志愿阶段", len(nt) == 1 and "你的志愿" in nt[0]["TITLE"] and "重新志愿" in nt[0]["CONTENT"])
+
+# 18.4 志愿填报服务端校验（防篡改）
+reset_round(rule="multi_wish", max_wish=2)
+body = post(login("zhangsan"), "/student/wish", data={"wishes": ["9:T05"]})
+check("志愿序号越界被拒绝", "志愿序号需在 1~2 之间" in body)
+check("越界志愿未写入", sql("SELECT COUNT(*) c FROM SELECTIONS WHERE STATUS='wish'")[0]["c"] == 0)
+body = post(login("zhangsan"), "/student/wish", data={"wishes": ["bad"]})
+check("畸形志愿数据被拒绝", "格式不正确" in body)
+body = post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T05", "2:T05"]})
+check("重复题目被拒绝", "不能重复选择同一题目" in body)
+check("校验失败后仍可正常提交", "成功" in post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T05"]}))
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:
