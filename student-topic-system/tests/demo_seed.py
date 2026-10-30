@@ -1,8 +1,8 @@
 """演示数据脚本：生成多师生账号，方便多人同时登录手工测试
 
 用法：
-  1. 先启动服务（cd src && python app.py）
-  2. 运行：python tests/demo_seed.py
+  1. 先启动服务（项目根目录执行 .venv/bin/python src/app.py）
+  2. 进入 src 运行：../.venv/bin/python ../tests/demo_seed.py
   3. 用下面打印的账号在多个浏览器/隐私窗口同时登录测试
 """
 import sqlite3

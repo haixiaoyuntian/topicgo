@@ -45,16 +45,16 @@ student-topic-system/
 ## 快速开始
 
 ```bash
-cd src
-pip install -r requirements.txt
-python app.py
+cd student-topic-system
+uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.txt
+.venv/bin/python src/app.py
 # 浏览器访问 http://localhost:5000
 ```
 
 在线体验（临时公网地址，2026-10-23 重建）：https://newman-where-jackie-involvement.trycloudflare.com
 （系统内还提供 项目主页 `/home`、原型演示 `/prototype`、使用流程 `/guide`）
 
-> 公网地址为 Cloudflare 临时隧道，服务重启后会失效。本地测试请 `cd src && python app.py` 后访问 http://localhost:5000；
+> 公网地址为 Cloudflare 临时隧道，服务重启后会失效。本地测试请在项目根目录执行 `.venv/bin/python src/app.py` 后访问 http://localhost:5000；
 > 重建公网隧道：启动服务后执行 `cloudflared tunnel --url http://127.0.0.1:5000`，把输出的 trycloudflare.com 地址替换上文即可。
 
 ## 角色与数据归属
@@ -94,11 +94,11 @@ python app.py
 ## 测试
 
 ```bash
-# 先启动服务（cd src && python app.py），再在 src 目录下运行测试
-python ../tests/test_concurrent_select.py   # 并发防超卖
-python ../tests/test_regression.py          # 全功能回归（126 项断言）
-python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
-python ../tests/demo_seed.py                # 生成多人演示账号
+# 先启动服务（项目根目录 `.venv/bin/python src/app.py`），再在 src 目录下运行测试
+../.venv/bin/python ../tests/test_concurrent_select.py   # 并发防超卖
+../.venv/bin/python ../tests/test_regression.py          # 全功能回归（126 项断言）
+../.venv/bin/python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
+../.venv/bin/python ../tests/demo_seed.py                # 生成多人演示账号
 
 # 详细的自己动手测试指南见 tests/自测说明.md
 ```
@@ -118,5 +118,5 @@ python ../tests/demo_seed.py                # 生成多人演示账号
 
 | 成员 | 角色 |
 | --- | --- |
-| 学生1 | 组长 / 后端开发（架构、选题算法、权限策略、测试） |
-| 学生2 | 产品 / 前端 / 文档（需求、原型、页面、发布） |
+| 姬昕昊 | 组长 / 后端开发（架构、选题算法、权限策略、测试） |
+| 王礼骐 | 产品 / 前端 / 文档（需求、原型、页面、发布） |

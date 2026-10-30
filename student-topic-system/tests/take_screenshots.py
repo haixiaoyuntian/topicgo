@@ -1,9 +1,9 @@
 """截图脚本：自动截取系统各页面截图，用于文档配图
 
 用法：
-  1. 先启动服务（cd src && python app.py）
-  2. （可选）python ../tests/demo_seed.py 生成更丰富的演示数据
-  3. 在 src 目录执行：python ../tests/take_screenshots.py
+  1. 先启动服务（项目根目录执行 .venv/bin/python src/app.py）
+  2. （可选）进入 src：../.venv/bin/python ../tests/demo_seed.py
+  3. 在 src 目录执行：../.venv/bin/python ../tests/take_screenshots.py
 截图输出到 wiki/screenshots/ 目录。
 """
 import os
