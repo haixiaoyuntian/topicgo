@@ -33,7 +33,7 @@ student-topic-system/
 ├── tests/
 │   ├── 自测说明.md               # 自测指南（如何自己运行测试）
 │   ├── test_concurrent_select.py  # 并发选题防超卖测试
-│   ├── test_regression.py         # 全功能回归测试（115 项断言）
+│   ├── test_regression.py         # 全功能回归测试（126 项断言）
 │   ├── test_e2e_multi_user.py     # 多用户协同 E2E 测试（22 项断言）
 │   ├── demo_seed.py               # 演示数据生成（多人同时登录测试）
 │   └── take_screenshots.py        # 自动截取系统页面截图（文档配图）
@@ -96,7 +96,7 @@ python app.py
 ```bash
 # 先启动服务（cd src && python app.py），再在 src 目录下运行测试
 python ../tests/test_concurrent_select.py   # 并发防超卖
-python ../tests/test_regression.py          # 全功能回归（115 项断言）
+python ../tests/test_regression.py          # 全功能回归（126 项断言）
 python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
 python ../tests/demo_seed.py                # 生成多人演示账号
 
@@ -111,7 +111,7 @@ python ../tests/demo_seed.py                # 生成多人演示账号
 - `01-功能展示-测试用例.md`：61 条手工用例 + 自动化结果 + 分工
 - `02-非功能性展示.md`：效率实测、并发、安全、报错、健壮性
 - `03-主要关键技术.md`：技术栈、架构、9 张表、关键算法
-- `04-工作量统计.md`：主体功能代码 3841 行（不含脚本与文档）
+- `04-工作量统计.md`：主体功能代码 3917 行（不含脚本与文档）
 - `05-验收演示讲稿与PPT大纲.md`、`TopicGo-验收汇报.pptx`
 
 ## 团队

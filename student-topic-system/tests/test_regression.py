@@ -601,6 +601,41 @@ body = post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T05", "2:T05
 check("重复题目被拒绝", "不能重复选择同一题目" in body)
 check("校验失败后仍可正常提交", "成功" in post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T05"]}))
 
+# ---------- 19. 规则切换遗留记录与成绩录入入口 ----------
+print("\n== 19. 规则切换遗留记录与成绩录入入口 ==")
+
+# 19.1 有志愿待分配时，禁止把规则切走（否则学生卡在「志愿待分配」）
+reset_round(rule="multi_wish", max_wish=2)
+post(login("zhangsan"), "/student/wish", data={"wishes": ["1:T05"]})
+body = post(login("teacher"), "/teacher/round", data={
+    "action": "save", "round_id": rid, "round_name": "t", "rule": "first_come",
+    "start_at": "2020-01-01 00:00:00", "end_at": "2030-01-01 00:00:00",
+    "waitlist_on": "1", "promote_mode": "auto", "max_wish": "2",
+    "max_cancel": "2", "cancel_lock_hours": "0", "status": "open"})
+check("有遗留志愿时禁止切换规则", "还有 1 条志愿待分配" in body)
+check("拒绝后规则仍为多志愿", sql("SELECT RULE FROM ROUNDS")[0]["RULE"] == "multi_wish")
+
+# 19.2 模拟规则已被切走的历史数据：监控页给出「处理遗留志愿」，不再卡死
+conn = sqlite3.connect(DB)
+conn.execute("UPDATE ROUNDS SET RULE='first_come'")
+conn.commit()
+conn.close()
+body = get(login("teacher"), "/teacher/monitor")
+check("监控页出现遗留志愿入口", "待处理：遗留志愿" in body and "处理遗留志愿" in body)
+body = post(login("teacher"), "/teacher/allocate")
+check("非多志愿模式不能走普通分配", "不是多志愿模式" in body)
+check("普通分配失败后记录仍是志愿", sql("SELECT STATUS FROM SELECTIONS")[0]["STATUS"] == "wish")
+body = post(login("teacher"), "/teacher/allocate", data={"legacy": "1", "round_id": rid})
+check("遗留志愿可按多志愿规则处理", "分配完成" in body)
+check("遗留志愿状态已变为已确认", sql("SELECT STATUS FROM SELECTIONS")[0]["STATUS"] == "confirmed")
+check("遗留志愿处理写入日志", sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='allocate'")[0]["c"] >= 1)
+
+# 19.3 成绩录入入口同时包含绩点与课程名/分数
+body = get(login("teacher"), "/teacher/students")
+check("成绩入口同时有课程名与分数", 'name="course_name"' in body and 'name="score"' in body)
+check("成绩入口保留绩点录入", 'name="gpa"' in body)
+check("展开按钮会同时显示两个表单", "querySelectorAll('.score-form')" in body)
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:

@@ -55,11 +55,13 @@
           {% else %}不限{% endif %}
         </td>
         <td>
-          <button class="btn btn-default btn-sm" onclick="var f=this.closest('td').querySelector('.score-form');f.style.display=f.style.display=='flex'?'none':'flex';">录成绩/绩点</button>
+          <button class="btn btn-default btn-sm" title="展开后可录入课程名+分数，也可修改绩点"
+                  onclick="var fs=this.closest('td').querySelectorAll('.score-form');var show=fs[0].style.display!=='flex';fs.forEach(function(f){f.style.display=show?'flex':'none';});">成绩/绩点录入</button>
           <form method="post" class="inline-form score-form" style="display:none;margin-top:8px;">
             {{ csrf_input() }}
             <input type="hidden" name="action" value="save_gpa">
             <input type="hidden" name="user_id" value="{{ r.student.ID }}">
+            <span class="score-label">绩点</span>
             <input name="gpa" type="number" step="0.1" min="0" max="5" value="{{ r.student.GPA }}" style="width:70px;" title="绩点 0~5">
             <button class="btn btn-default btn-sm" type="submit">存绩点</button>
           </form>
@@ -67,6 +69,7 @@
             {{ csrf_input() }}
             <input type="hidden" name="action" value="save_score">
             <input type="hidden" name="user_id" value="{{ r.student.ID }}">
+            <span class="score-label">课程</span>
             <input name="course_name" list="course-list" placeholder="课程名" style="width:130px;" required>
             <input name="score" type="number" step="0.1" min="0" max="100" placeholder="分数" style="width:70px;" required>
             <input name="term" placeholder="学期" style="width:80px;">
@@ -84,6 +87,6 @@
   </datalist>
   <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。
     「退选次数」显示 已用/上限，用尽的学生如需再退选会联系你；撤销学生误提交的志愿不计入其次数。
-    成绩与绩点由你维护，用于绩点优先放行、多志愿分配与课题前置要求核验；红色分数=挂科（&lt;60）。</p>
+    成绩与绩点由你维护，用于绩点优先放行、多志愿分配与课题前置要求核验；红色分数=挂科（&lt;60）。<br>「志愿待分配/待抽签」的学生，请到「选题监控」执行分配/抽签，或撤销后让学生重新提交。</p>
 </div>
 {% endblock %}

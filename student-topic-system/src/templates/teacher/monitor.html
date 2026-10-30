@@ -28,17 +28,45 @@
   <p class="flow-tip">当前有 {{ wish_total }} 条志愿记录待分配。分配规则：按志愿序号依次处理，同志愿超员按绩点优先；未命中任何志愿者转第一志愿候补。分配后动作全部写日志。</p>
   <form method="post" action="{{ url_for('teacher_allocate') }}" onsubmit="return confirm('确认执行统一分配？分配后不可撤销。')">
     {{ csrf_input() }}
+    <input type="hidden" name="round_id" value="{{ round.ID }}">
     <button class="btn btn-primary">执行志愿分配</button>
   </form>
 </div>
-{% elif round and round.RULE == 'lottery' %}
+{% elif round and wish_total > 0 %}
+<div class="card">
+  <h3>待处理：遗留志愿</h3>
+  <p class="flow-tip">检测到 {{ wish_total }} 条志愿记录，但当前轮次规则是「{{ rule_names.get(round.RULE, round.RULE) }}」。
+  这些记录来自规则切换前，无法按当前规则自动处理；可在这里按多志愿规则一次性处理，结果会写日志。</p>
+  <form method="post" action="{{ url_for('teacher_allocate') }}" onsubmit="return confirm('确认按多志愿规则处理遗留志愿？处理结果会写日志。')">
+    {{ csrf_input() }}
+    <input type="hidden" name="round_id" value="{{ round.ID }}">
+    <input type="hidden" name="legacy" value="1">
+    <button class="btn btn-primary">处理遗留志愿（{{ wish_total }} 条）</button>
+  </form>
+</div>
+{% endif %}
+
+{% if round and round.RULE == 'lottery' %}
 <div class="card">
   <h3>策略执行：随机抽签</h3>
   <p class="flow-tip">当前有 {{ entry_total }} 条报名记录。种子：<b>{{ round.LOTTERY_SEED or '自动生成' }}</b>。
   种子将向全员公开，任何人都能用该种子复现验证抽签结果，保证公平可审计。</p>
   <form method="post" action="{{ url_for('teacher_lottery') }}" onsubmit="return confirm('确认执行抽签？结果不可撤销。')">
     {{ csrf_input() }}
+    <input type="hidden" name="round_id" value="{{ round.ID }}">
     <button class="btn btn-primary">执行公开抽签</button>
+  </form>
+</div>
+{% elif round and entry_total > 0 %}
+<div class="card">
+  <h3>待处理：遗留报名</h3>
+  <p class="flow-tip">检测到 {{ entry_total }} 条报名记录，但当前轮次规则不是随机抽签。
+  这些记录来自规则切换前，可在这里按公开抽签规则一次性处理，结果会写日志。</p>
+  <form method="post" action="{{ url_for('teacher_lottery') }}" onsubmit="return confirm('确认按抽签规则处理遗留报名？处理结果会写日志。')">
+    {{ csrf_input() }}
+    <input type="hidden" name="round_id" value="{{ round.ID }}">
+    <input type="hidden" name="legacy" value="1">
+    <button class="btn btn-primary">处理遗留报名（{{ entry_total }} 条）</button>
   </form>
 </div>
 {% endif %}
@@ -102,6 +130,7 @@
 {% if pending %}
 <div class="card">
   <h3>待分配/待抽签名单（可撤销误提交或按前置要求退课）</h3>
+  <p class="flow-tip">「志愿」记录由页面上方「执行志愿分配」或「处理遗留志愿」统一处理；「报名」记录由「执行公开抽签」或「处理遗留报名」统一处理。如需退回学生重选，点「撤销」。</p>
   <table>
     <thead><tr><th>题目</th><th>学号</th><th>姓名</th><th>绩点</th><th>类型</th><th>志愿序号</th><th>前置核验</th><th>操作</th></tr></thead>
     <tbody>

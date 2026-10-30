@@ -1061,10 +1061,27 @@ def teacher_round():
             flash("无权修改他人轮次", "error")
             conn.close()
             return redirect(url_for("teacher_round"))
+        old = conn.execute("SELECT RULE FROM ROUNDS WHERE ID=?", (own["ID"],)).fetchone()
+        new_rule = request.form.get("rule", "first_come")
+        pending_wish = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS WHERE ROUND_ID=? AND STATUS='wish'",
+            (own["ID"],)).fetchone()["c"]
+        pending_entry = conn.execute(
+            "SELECT COUNT(*) c FROM SELECTIONS WHERE ROUND_ID=? AND STATUS='entry'",
+            (own["ID"],)).fetchone()["c"]
+        # 规则切换前必须先处理遗留记录，否则学生状态会卡在「志愿待分配/待抽签」
+        if old["RULE"] == "multi_wish" and new_rule != "multi_wish" and pending_wish:
+            flash(f"还有 {pending_wish} 条志愿待分配，请先在选题监控执行分配或撤销，再切换规则", "error")
+            conn.close()
+            return redirect(url_for("teacher_round"))
+        if old["RULE"] == "lottery" and new_rule != "lottery" and pending_entry:
+            flash(f"还有 {pending_entry} 条报名待抽签，请先在选题监控执行抽签或撤销，再切换规则", "error")
+            conn.close()
+            return redirect(url_for("teacher_round"))
         conn.execute(
             "UPDATE ROUNDS SET ROUND_NAME=?,RULE=?,START_AT=?,END_AT=?,WAITLIST_ON=?,PROMOTE_MODE=?,"
             "MAX_WISH=?,LOTTERY_SEED=?,ALLOW_CLASSES=?,MAX_CANCEL=?,CANCEL_LOCK_HOURS=?,STATUS=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
-            (request.form["round_name"], request.form["rule"], request.form["start_at"],
+            (request.form["round_name"], new_rule, request.form["start_at"],
              request.form["end_at"], 1 if request.form.get("waitlist_on") else 0,
              request.form.get("promote_mode", "auto"), int(request.form.get("max_wish", 3)),
              request.form.get("lottery_seed", "").strip() or None,
@@ -1157,9 +1174,22 @@ def teacher_monitor():
 def teacher_allocate():
     """多志愿统一分配：按志愿序号依次处理，同志愿超员按绩点优先，未命中转第一志愿候补"""
     conn = get_conn()
-    rnd = own_round(conn)
-    if not rnd or rnd["RULE"] != "multi_wish":
-        flash("当前轮次不是多志愿模式", "error")
+    round_id = request.form.get("round_id", "").strip()
+    if round_id.isdigit():
+        rnd = conn.execute(
+            "SELECT * FROM ROUNDS WHERE ID=? AND TEACHER_ID=? AND FLAG=1",
+            (int(round_id), session["user_id"])).fetchone()
+    elif round_id:
+        rnd = None
+    else:
+        rnd = own_round(conn)
+    legacy = request.form.get("legacy") == "1"
+    if not rnd:
+        flash("轮次不存在或无权操作", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    if rnd["RULE"] != "multi_wish" and not legacy:
+        flash("当前轮次不是多志愿模式；如是规则切换前的遗留志愿，请在监控页点「处理遗留志愿」", "error")
         conn.close()
         return redirect(url_for("teacher_monitor"))
     ts = now_str()
@@ -1245,9 +1275,22 @@ def teacher_allocate():
 def teacher_lottery():
     """随机抽签：种子公开可复现，未中签者进候补，全过程写日志"""
     conn = get_conn()
-    rnd = own_round(conn)
-    if not rnd or rnd["RULE"] != "lottery":
-        flash("当前轮次不是随机抽签模式", "error")
+    round_id = request.form.get("round_id", "").strip()
+    if round_id.isdigit():
+        rnd = conn.execute(
+            "SELECT * FROM ROUNDS WHERE ID=? AND TEACHER_ID=? AND FLAG=1",
+            (int(round_id), session["user_id"])).fetchone()
+    elif round_id:
+        rnd = None
+    else:
+        rnd = own_round(conn)
+    legacy = request.form.get("legacy") == "1"
+    if not rnd:
+        flash("轮次不存在或无权操作", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    if rnd["RULE"] != "lottery" and not legacy:
+        flash("当前轮次不是随机抽签模式；如是规则切换前的遗留报名，请在监控页点「处理遗留报名」", "error")
         conn.close()
         return redirect(url_for("teacher_monitor"))
     seed = rnd["LOTTERY_SEED"] or f"{rnd['ID']}-{rnd['ROUND_NAME']}"
