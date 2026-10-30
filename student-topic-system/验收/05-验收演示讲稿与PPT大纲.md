@@ -131,10 +131,12 @@
 
 ### 准备
 
-- 窗口 1：`admin` 已登录，停在「用户管理」；
-- 窗口 2：`teacher` 已登录，停在「选题轮次」；
-- 窗口 3：`zhangsan` 已登录，停在「浏览题库」；
-- 窗口 4：`chenqi` 已登录，停在「浏览题库」；
+四个会话必须互相隔离：Chrome 普通、Chrome 无痕、Edge 普通、Edge InPrivate 各登录一个账号。同一浏览器的多个无痕窗口共享 Cookie，后登录会顶掉前一个。
+
+- 窗口 1（Chrome 普通）：`admin` 已登录，停在「用户管理」；
+- 窗口 2（Chrome 无痕）：`teacher` 已登录，停在「选题轮次」；
+- 窗口 3（Edge 普通）：`zhangsan` 已登录，停在「浏览题库」；
+- 窗口 4（Edge InPrivate）：`chenqi` 已登录，停在「浏览题库」；
 - 终端：`cd student-topic-system/src`，服务已启动。
 
 ### 动线
