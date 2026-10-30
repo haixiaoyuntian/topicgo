@@ -99,6 +99,7 @@ uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.tx
 ../.venv/bin/python ../tests/test_regression.py          # 全功能回归（126 项断言）
 ../.venv/bin/python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
 ../.venv/bin/python ../tests/demo_seed.py                # 生成多人演示账号
+../.venv/bin/python ../tests/test_nonfunctional.py        # 非功能检查（14 项）
 
 # 详细的自己动手测试指南见 tests/自测说明.md
 ```
