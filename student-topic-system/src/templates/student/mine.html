@@ -5,14 +5,16 @@
   <h3>我的选题{% if round %}（{{ round.ROUND_NAME }} · {{ rule_name }}）{% endif %}</h3>
   {% if cancel_max > 0 %}
   <p class="flow-tip">🔁 防反复退选：本轮每人最多退选 {{ cancel_max }} 次，你已使用 <b>{{ cancel_used }}</b> 次（剩余 {{ cancel_max - cancel_used }} 次）；
-    {% if round.CANCEL_LOCK_HOURS %}截止前 {{ round.CANCEL_LOCK_HOURS }} 小时内不可退选；{% endif %}次数用完后如需退选请联系任课教师。</p>
+    {% if round.CANCEL_LOCK_HOURS %}截止前 {{ round.CANCEL_LOCK_HOURS }} 小时内不可退选；{% endif %}
+    {% if quota_blocked %}次数已用完，可在下方提交「退选申请」由指导教师代为退选。{% else %}次数用完后同样可提交退选申请。{% endif %}</p>
   {% endif %}
   {% if active %}
   <table>
-    <thead><tr><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>志愿/候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
+    <thead><tr><th>轮次</th><th>编号</th><th>题目名称</th><th>人数上限</th><th>状态</th><th>志愿/候补序号</th><th>选题时间</th><th>操作</th></tr></thead>
     <tbody>
     {% for r in active %}
       <tr>
+        <td>{{ r.ROUND_NAME }}</td>
         <td>{{ r.TOPIC_CODE }}</td>
         <td>{{ r.TOPIC_NAME }}</td>
         <td>{{ r.MAX_NUM }}</td>
@@ -25,22 +27,45 @@
         <td>{{ r.WISH_NO or r.QUEUE_NO or '-' }}</td>
         <td>{{ r.SELECTED_AT }}</td>
         <td>
-          {% if r.STATUS in ('confirmed','waiting') %}
-          <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
-                onsubmit="return confirm('确认退选？退选记录将保留，名额按递补策略处理。')">
-            {{ csrf_input() }}
-            <select name="reason" required style="width:150px;">
-              <option value="">退选原因（必选）</option>
-              {% for rs in cancel_reasons %}<option value="{{ rs }}">{{ rs }}</option>{% endfor %}
-            </select>
-            <button class="btn btn-danger btn-sm">退选</button>
-          </form>
-          {% else %}-{% endif %}
+          {% set is_current = round and r.ROUND_ID == round.ID %}
+          {% if not is_current %}
+            -
+          {% elif r.ID in pending_ids %}
+            <span class="tag tag-orange">退选申请待教师处理</span>
+          {% elif r.STATUS in ('confirmed','waiting') and not quota_blocked and not lock_blocked %}
+            <form method="post" action="{{ url_for('student_cancel', selection_id=r.ID) }}" style="display:inline;"
+                  onsubmit="return confirm('确认退选？退选记录将保留，名额按递补策略处理。')">
+              {{ csrf_input() }}
+              <select name="reason" required style="width:150px;">
+                <option value="">退选原因（必选）</option>
+                {% for rs in cancel_reasons %}<option value="{{ rs }}">{{ rs }}</option>{% endfor %}
+              </select>
+              <button class="btn btn-danger btn-sm">退选</button>
+            </form>
+          {% else %}
+            <details class="inline-apply">
+              <summary class="btn btn-default btn-sm">申请退选（联系教师）</summary>
+              <form method="post" action="{{ url_for('student_cancel_request', selection_id=r.ID) }}"
+                    style="margin-top:8px;min-width:260px;">
+                {{ csrf_input() }}
+                <textarea name="reason" rows="3" required maxlength="300" style="width:100%;"
+                          placeholder="请说明为什么必须退选/改选（不少于 4 个字），教师据此处理"></textarea>
+                <button class="btn btn-primary btn-sm" style="margin-top:6px;">提交申请</button>
+              </form>
+            </details>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  <p class="flow-tip">
+    {% if quota_blocked or lock_blocked %}
+    ⚠️ 你本轮已无法自行退选（{{ '退选次数已用完' if quota_blocked else '已进入截止前锁定时间' }}），请用「申请退选」提交理由，教师同意后系统会自动取消记录、按策略递补并通知你。
+    {% else %}
+    「志愿待分配 / 已报名待抽签」阶段不能自行退选，可提交申请由教师撤销后重新提交。
+    {% endif %}
+  </p>
   {% else %}
   <div class="empty-guide" style="box-shadow:none;padding:32px;">
     <div class="empty-icon">📝</div>
@@ -52,13 +77,42 @@
 </div>
 
 <div class="card">
+  <h3>我的退选申请</h3>
+  {% if reqs %}
+  <table>
+    <thead><tr><th>申请时间</th><th>题目</th><th>我的说明</th><th>状态</th><th>教师意见</th><th>处理时间</th></tr></thead>
+    <tbody>
+    {% for q in reqs %}
+      <tr>
+        <td>{{ q.CREATED_AT }}</td>
+        <td>{{ q.TOPIC_CODE or '-' }} {{ q.TOPIC_NAME or '' }}</td>
+        <td>{{ q.REASON }}</td>
+        <td>
+          {% if q.STATUS=='pending' %}<span class="tag tag-orange">待处理</span>
+          {% elif q.STATUS=='approved' %}<span class="tag tag-green">已同意</span>
+          {% else %}<span class="tag tag-red">已驳回</span>{% endif %}
+        </td>
+        <td>{{ q.HANDLE_REMARK or '-' }}</td>
+        <td>{{ q.HANDLED_AT or '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="flow-tip">教师处理后你会收到站内通知；教师代退不计入你的退选次数。</p>
+  {% else %}
+  <p class="empty-inline">暂无退选申请。</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>历史记录（含退选痕迹）</h3>
   {% if history %}
   <table>
-    <thead><tr><th>编号</th><th>题目名称</th><th>状态</th><th>选题时间</th><th>退选时间</th></tr></thead>
+    <thead><tr><th>轮次</th><th>编号</th><th>题目名称</th><th>状态</th><th>选题时间</th><th>退选时间</th></tr></thead>
     <tbody>
     {% for r in history %}
       <tr>
+        <td>{{ r.ROUND_NAME }}</td>
         <td>{{ r.TOPIC_CODE }}</td>
         <td>{{ r.TOPIC_NAME }}</td>
         <td><span class="tag tag-red">已退选</span></td>

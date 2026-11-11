@@ -157,6 +157,32 @@ CREATE TABLE IF NOT EXISTS NOTICES (
 
 CREATE INDEX IF NOT EXISTS IDX_NOTICES_USER ON NOTICES (USER_ID, READ_FLAG);
 
+-- 退选/改选申请：学生退选次数用尽、截止锁定或处于志愿/报名阶段时，
+-- 可提交申请由指导教师代为退选；教师同意后按同一递补策略释放名额并通知学生
+CREATE TABLE IF NOT EXISTS CANCEL_REQUESTS (
+    ID             INTEGER PRIMARY KEY AUTOINCREMENT,
+    ROUND_ID       INTEGER NOT NULL,
+    TOPIC_ID       INTEGER NOT NULL,
+    USER_ID        INTEGER NOT NULL,                  -- 申请人（学生）
+    SELECTION_ID   INTEGER NOT NULL,                  -- 对应选题记录
+    REASON         TEXT NOT NULL,                     -- 学生说明（为什么必须退/改）
+    STATUS         TEXT NOT NULL DEFAULT 'pending',   -- pending / approved / rejected
+    HANDLE_REMARK  TEXT,                              -- 教师处理意见
+    HANDLED_BY     TEXT,
+    HANDLED_AT     TEXT,
+    CREATED_BY     TEXT,
+    CREATED_AT     TEXT,
+    UPDATED_BY     TEXT,
+    UPDATED_AT     TEXT,
+    FLAG           INTEGER DEFAULT 1
+);
+
+-- 同一条选题记录只允许存在一条待处理申请，防止刷单
+CREATE UNIQUE INDEX IF NOT EXISTS UK_CANCEL_REQ_PENDING
+    ON CANCEL_REQUESTS (SELECTION_ID) WHERE STATUS='pending';
+
+CREATE INDEX IF NOT EXISTS IDX_CANCEL_REQ_USER ON CANCEL_REQUESTS (USER_ID, STATUS);
+
 CREATE TABLE IF NOT EXISTS ANNOUNCEMENTS (
     ID             INTEGER PRIMARY KEY AUTOINCREMENT,
     TITLE          TEXT NOT NULL,

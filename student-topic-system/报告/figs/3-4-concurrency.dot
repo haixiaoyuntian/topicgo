@@ -1,0 +1,23 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.18", nodesep="0.28", ranksep="0.32"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2, margin="0.12,0.06"];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.65];
+
+  rankdir=TB; node [style="rounded,filled"];
+  s [shape=ellipse, fillcolor="#d9e6f7", label="POST /student/select/<id>"];
+  v1 [label="会话/角色/CSRF 校验 + 轮次时间窗 + 班级与归属校验"];
+  t0 [label="BEGIN IMMEDIATE（立即写锁，串行化）", fillcolor="#fff4e6", color="#e8a33d"];
+  q1 [label="SELECT COUNT(*) … STATUS='confirmed'"];
+  d1 [shape=diamond, style="filled", fillcolor="#fff7e6", label="count < MAX_NUM ?"];
+  ins [label="INSERT … confirmed\n+ log_event（同事务）"];
+  d2 [shape=diamond, style="filled", fillcolor="#fff7e6", label="WAITLIST_ON ?"];
+  w [label="INSERT … waiting\nQUEUE_NO = MAX+1"];
+  rb [label="ROLLBACK\n提示已满员", fillcolor="#ffecec", color="#d46b6b"];
+  c [label="COMMIT", fillcolor="#eaf7ee", color="#4a9d63"];
+  e [shape=ellipse, fillcolor="#d9e6f7", label="Flash 提示并返回"];
+  s->v1->t0->q1->d1;
+  d1->ins [label="是"]; d1->d2 [label="否"];
+  d2->w [label="是"]; d2->rb [label="否"];
+  ins->c; w->c; c->e; rb->e;
+}

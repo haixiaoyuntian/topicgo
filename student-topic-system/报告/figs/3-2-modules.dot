@@ -1,0 +1,41 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.18", nodesep="0.28", ranksep="0.32"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2, margin="0.12,0.06"];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.65];
+
+  rankdir=TB;
+  root [label="学生选题系统 TopicGo", fillcolor="#d9e6f7", color="#2f5597", fontsize=13];
+  subgraph cluster_s {
+    label="学生端（6 页）"; color="#9db7d9"; style="rounded,dashed"; fontsize=11;
+    s1 [label="浏览题库（搜索/筛选/前置要求）"];
+    s2 [label="志愿填报 / 抽签报名"];
+    s3 [label="选题与候补（满员入队）"];
+    s4 [label="退选 / 退选申请"];
+    s5 [label="我的选题 / 申请进度"];
+    s6 [label="结果公示 / 站内通知"];
+  }
+  subgraph cluster_t {
+    label="教师端（8 页）"; color="#e8c79b"; style="rounded,dashed"; fontsize=11;
+    t1 [label="题库维护（前置要求）", fillcolor="#fff7e6", color="#e8a33d"];
+    t2 [label="选题轮次（四种策略）", fillcolor="#fff7e6", color="#e8a33d"];
+    t3 [label="监控 / 分配 / 抽签 / 递补", fillcolor="#fff7e6", color="#e8a33d"];
+    t4 [label="申请审批 / 教师代退", fillcolor="#fff7e6", color="#e8a33d"];
+    t5 [label="我的学生 / 成绩 / 绩点", fillcolor="#fff7e6", color="#e8a33d"];
+    t6 [label="公告 / 日志 / CSV 导出", fillcolor="#fff7e6", color="#e8a33d"];
+  }
+  subgraph cluster_a {
+    label="管理员（1 页）与公共"; color="#a9d3b8"; style="rounded,dashed"; fontsize=11;
+    a1 [label="用户登记 / 分配导师 / 停用", fillcolor="#eaf7ee", color="#4a9d63"];
+    a2 [label="登录 / 改密 / 展示页", fillcolor="#eaf7ee", color="#4a9d63"];
+  }
+  root -> s1; root -> t1; root -> a1;
+  s1 -> s2 -> s3 -> s4 -> s5 -> s6 [style=invis];
+  t1 -> t2 -> t3 -> t4 -> t5 -> t6 [style=invis];
+  {rank=same; s1; t1; a1;}
+  {rank=same; s2; t2; a2;}
+  {rank=same; s3; t3;}
+  {rank=same; s4; t4;}
+  {rank=same; s5; t5;}
+  {rank=same; s6; t6;}
+}

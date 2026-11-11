@@ -19,7 +19,7 @@
 {% else %}
 
 <!-- 待办事项 -->
-{% if todo_wish or todo_entry or todo_wait %}
+{% if todo_wish or todo_entry or todo_wait or todo_request %}
 <div class="card todo-card">
   <div class="todo-main">
     <div class="todo-icon">📬</div>
@@ -29,6 +29,7 @@
         {% if todo_wish %}<span class="todo-pill">{{ todo_wish }} 条志愿待分配</span>{% endif %}
         {% if todo_entry %}<span class="todo-pill">{{ todo_entry }} 人待抽签</span>{% endif %}
         {% if todo_wait %}<span class="todo-pill">{{ todo_wait }} 人候补中</span>{% endif %}
+        {% if todo_request %}<span class="todo-pill">{{ todo_request }} 条退选申请待处理</span>{% endif %}
       </p>
     </div>
   </div>

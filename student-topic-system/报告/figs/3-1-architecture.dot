@@ -1,0 +1,30 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.25", nodesep="0.35", ranksep="0.45"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.7];
+
+  rankdir=TB;
+  subgraph cluster_view {
+    label="表示层：浏览器（PC / 手机自适应）"; fontsize=12; color="#9db7d9"; style="rounded,dashed";
+    s1 [label="学生端页面\n首页 / 浏览 / 志愿 / 我的选题 / 公示 / 通知"];
+    s2 [label="教师端页面\n题库 / 轮次 / 监控 / 我的学生 / 日志"];
+    s3 [label="管理员页面\n用户登记与账号管理"];
+  }
+  subgraph cluster_app {
+    label="应用层：Flask 单进程（35 个路由）"; fontsize=12; color="#9db7d9"; style="rounded,dashed";
+    r1 [label="认证与权限\nSession / login_required / CSRF", fillcolor="#fff4e6", color="#e8a33d"];
+    r2 [label="业务服务\n选题 / 退选 / 申请审批 / 代退\n递补 / 分配 / 抽签 / 前置核验", fillcolor="#fff4e6", color="#e8a33d"];
+    r3 [label="审计与通知\nSELECTION_EVENTS / NOTICES", fillcolor="#fff4e6", color="#e8a33d"];
+  }
+  subgraph cluster_data {
+    label="数据层：SQLite（WAL 模式，单文件）"; fontsize=12; color="#9db7d9"; style="rounded,dashed";
+    d1 [label="10 张业务表 + 8 个索引\n统一五公共字段（CREATED/UPDATED/FLAG）", fillcolor="#eaf7ee", color="#4a9d63"];
+  }
+  s1 -> r1; s2 -> r1; s3 -> r1;
+  r1 -> r2 [label="角色校验通过"];
+  r2 -> r3 [label="同事务写日志/通知"];
+  r1 -> d1 [style=dashed, label="参数化 SQL"];
+  r2 -> d1 [label="BEGIN IMMEDIATE"];
+  r3 -> d1;
+}

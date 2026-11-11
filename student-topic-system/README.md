@@ -10,6 +10,9 @@
 
 ```
 student-topic-system/
+├── Dockerfile                 # 容器镜像（gunicorn 启动，供云平台部署）
+├── render.yaml                # Render 免费 Web Service 蓝图
+├── DEPLOY.md                  # 固定公网地址部署步骤
 ├── wiki/                      # 课程过程文档（对应 Gitee Wiki）
 │   ├── 01-项目立项.md          # 头脑风暴会议记录 + 思维导图 + NABCD 模型
 │   ├── 02-原型设计.md          # 原型地址、截图、可交互流程
@@ -29,11 +32,11 @@ student-topic-system/
 │   ├── requirements.txt
 │   ├── static/style.css
 │   └── templates/              # 18 个页面：登录/改密/基座 + 学生端 6 + 教师端 8 + 管理员 1
-├── 验收/                      # 验收专用材料（总览 / 61 条用例 / 非功能实测 / 技术 / 工作量 / PPT）
+├── 验收/                      # 验收专用材料（总览 / 69 条用例 / 非功能实测 / 技术 / 工作量 / PPT）
 ├── tests/
 │   ├── 自测说明.md               # 自测指南（如何自己运行测试）
 │   ├── test_concurrent_select.py  # 并发选题防超卖测试
-│   ├── test_regression.py         # 全功能回归测试（126 项断言）
+│   ├── test_regression.py         # 全功能回归测试（163 项断言）
 │   ├── test_e2e_multi_user.py     # 多用户协同 E2E 测试（22 项断言）
 │   ├── demo_seed.py               # 演示数据生成（多人同时登录测试）
 │   └── take_screenshots.py        # 自动截取系统页面截图（文档配图）
@@ -51,11 +54,22 @@ uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.tx
 # 浏览器访问 http://localhost:5000
 ```
 
-在线体验（临时公网地址，2026-10-23 重建）：https://newman-where-jackie-involvement.trycloudflare.com
+在线体验（临时公网地址，2026-11-11 重建）：https://toe-computed-handy-jazz.trycloudflare.com
 （系统内还提供 项目主页 `/home`、原型演示 `/prototype`、使用流程 `/guide`）
 
 > 公网地址为 Cloudflare 临时隧道，服务重启后会失效。本地测试请在项目根目录执行 `.venv/bin/python src/app.py` 后访问 http://localhost:5000；
 > 重建公网隧道：启动服务后执行 `cloudflared tunnel --url http://127.0.0.1:5000`，把输出的 trycloudflare.com 地址替换上文即可。
+> 需要**固定地址**时，按 `DEPLOY.md` 部署到 Render，得到 `https://<service>.onrender.com`（免费实例，无需信用卡）。
+
+## 公网部署（固定地址）
+
+仓库已提供 `Dockerfile`、`.dockerignore` 与 `render.yaml`，可在 Render 免费实例上部署：
+
+1. 把仓库推到公开 Git 仓库（CNB 当前仓库可直接被 Render 读取；若不被识别，按 `DEPLOY.md` 镜像到 GitHub）；
+2. Render → **New +** → **Web Service** → 选择仓库 → Runtime 选 **Docker** → Instance Type 选 **Free** → 添加环境变量 `SECRET_KEY`；
+3. 等待构建完成，得到 `https://<service>.onrender.com`。
+
+完整步骤（Blueprint 一键创建、GitHub 镜像、免费实例休眠与数据说明）见 `DEPLOY.md`。
 
 ## 角色与数据归属
 
@@ -77,8 +91,9 @@ uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.tx
 - **并发防超卖**：`BEGIN IMMEDIATE` 事务 + 部分唯一索引，多人同时抢题不超卖、不重复选；
 - **递补策略**：退选后可按"自动递补 / 教师手动递补 / 不递补"处理，防恶意退选；
 - **防反复退选**：每轮每生退选次数上限（教师撤销不计入）、截止前 N 小时禁止退选、退选原因必选并写入日志，三重防护可轮次级配置；
+- **退选锁定闭环**：次数用尽/截止锁定/处于志愿报名阶段时，学生可在「我的选题」提交退选申请；教师端监控页实时收到待办（导航红点 + 工作台提醒），同意后系统代为退选、按策略递补并发站内通知（不计入学生次数），驳回也会通知学生；教师也可直接「代退」线下联系的学生；
 - **学业数据与前置要求**：教师维护学生的绩点与各科成绩；课题可设「前置要求」（人话描述 + 课程分数门槛），学生选课前可见自身匹配情况；教师可按前置门槛退课，学生立即收到含原因与建议的站内通知；
-- **全程留痕**：选题、退选、递补、分配、抽签全部写入操作日志；退选不删记录，"选课与退选记录"永久可查；
+- **全程留痕**：选题、退选、申请、审批、递补、分配、抽签全部写入操作日志；退选不删记录，"选课与退选记录"永久可查；
 - **权限管控**：不提供公开注册，仅管理员登记的用户可登录，支持账号停用；
 - **师生归属**：学生绑定指导教师，只能看到自己老师的开放课题；教师只能管理自己的课题、轮次与学生；管理员只负责账户不涉及课程；
 - **多班级管理**：教师可管理多个班级，课题按「面向班级」发布，仅对应班级学生可见（不选=面向所有班级）；
@@ -96,7 +111,7 @@ uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.tx
 ```bash
 # 先启动服务（项目根目录 `.venv/bin/python src/app.py`），再在 src 目录下运行测试
 ../.venv/bin/python ../tests/test_concurrent_select.py   # 并发防超卖
-../.venv/bin/python ../tests/test_regression.py          # 全功能回归（126 项断言）
+../.venv/bin/python ../tests/test_regression.py          # 全功能回归（163 项断言）
 ../.venv/bin/python ../tests/test_e2e_multi_user.py      # 多用户协同 E2E（2教师+12学生，22 项断言）
 ../.venv/bin/python ../tests/demo_seed.py                # 生成多人演示账号
 ../.venv/bin/python ../tests/test_nonfunctional.py        # 非功能检查（14 项）
@@ -109,10 +124,11 @@ uv venv .venv && uv pip install --python .venv/bin/python -r src/requirements.tx
 验收专用材料集中在 `验收/`，从 `00-验收总览.md` 开始看：
 
 - `00-验收总览.md`：结论、四维度对照、准备清单、现场流程
-- `01-功能展示-测试用例.md`：61 条手工用例 + 自动化结果 + 分工
+- `01-功能展示-测试用例.md`：69 条手工用例 + 自动化结果 + 分工
+- `../报告/《软件工程》项目报告-学生选题系统.docx`：按课程模板撰写的项目报告（可直接提交）
 - `02-非功能性展示.md`：效率实测、并发、安全、报错、健壮性
-- `03-主要关键技术.md`：技术栈、架构、9 张表、关键算法
-- `04-工作量统计.md`：主体功能代码 3917 行（不含脚本与文档）
+- `03-主要关键技术.md`：技术栈、架构、10 张表、关键算法
+- `04-工作量统计.md`：主体功能代码 4424 行（不含脚本与文档）
 - `05-验收演示讲稿与PPT大纲.md`、`TopicGo-验收汇报.pptx`
 
 ## 团队

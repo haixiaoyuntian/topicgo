@@ -1,0 +1,59 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.15", nodesep="0.3", ranksep="0.35"];
+  node [shape=plaintext, style="", fontsize=9, margin="0"];
+  edge [color="#6b8cae", arrowhead=crow, dir=both, fontsize=8];
+
+  USERS [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+    <TR><TD BGCOLOR="#d9e6f7"><B>USERS 用户</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / USER_NO / USER_NAME</TD></TR>
+    <TR><TD ALIGN="LEFT">ROLE / ADVISOR_ID / GPA / STATUS</TD></TR>
+    </TABLE>>];
+  TOPICS [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+    <TR><TD BGCOLOR="#d9e6f7"><B>TOPICS 课题</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / TOPIC_CODE / MAX_NUM</TD></TR>
+    <TR><TD ALIGN="LEFT">TEACHER_ID / TARGET_CLASSES</TD></TR>
+    <TR><TD ALIGN="LEFT">PREREQ_RULES / STATUS</TD></TR>
+    </TABLE>>];
+  ROUNDS [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+    <TR><TD BGCOLOR="#d9e6f7"><B>ROUNDS 轮次</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / TEACHER_ID / RULE</TD></TR>
+    <TR><TD ALIGN="LEFT">START_AT / END_AT / PROMOTE_MODE</TD></TR>
+    <TR><TD ALIGN="LEFT">MAX_WISH / MAX_CANCEL / SEED</TD></TR>
+    </TABLE>>];
+  SEL [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#fff7e6">
+    <TR><TD BGCOLOR="#ffe8bf"><B>SELECTIONS 选题记录</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / ROUND_ID / TOPIC_ID / USER_ID</TD></TR>
+    <TR><TD ALIGN="LEFT">STATUS / WISH_NO / QUEUE_NO</TD></TR>
+    <TR><TD ALIGN="LEFT">SELECTED_AT / CANCELLED_AT</TD></TR>
+    </TABLE>>];
+  REQ [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eaf7ee">
+    <TR><TD BGCOLOR="#c9e8d4"><B>CANCEL_REQUESTS 退选申请</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / SELECTION_ID / USER_ID</TD></TR>
+    <TR><TD ALIGN="LEFT">REASON / STATUS / HANDLE_REMARK</TD></TR>
+    <TR><TD ALIGN="LEFT">HANDLED_BY / HANDLED_AT</TD></TR>
+    </TABLE>>];
+  EV [label=<
+    <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+    <TR><TD BGCOLOR="#d9e6f7"><B>SELECTION_EVENTS 操作日志</B></TD></TR>
+    <TR><TD ALIGN="LEFT">ID (PK) / ROUND_ID / TOPIC_ID / USER_ID</TD></TR>
+    <TR><TD ALIGN="LEFT">ACTION / FROM_STATUS / TO_STATUS</TD></TR>
+    <TR><TD ALIGN="LEFT">OPERATOR / REMARK / OPERATED_AT</TD></TR>
+    </TABLE>>];
+
+  USERS -> TOPICS [label="1:N 发布"];
+  USERS -> ROUNDS [label="1:N 管理"];
+  TOPICS -> SEL [label="1:N"];
+  ROUNDS -> SEL [label="1:N"];
+  SEL -> REQ [label="1:N 申请"];
+  SEL -> EV [label="1:N 留痕"];
+  USERS -> SEL [label="1:N 选题", constraint=false, style=dashed];
+  USERS -> REQ [label="1:N", constraint=false, style=dashed];
+  {rank=same; USERS; TOPICS;}
+  {rank=same; ROUNDS; SEL;}
+  {rank=same; REQ; EV;}
+}

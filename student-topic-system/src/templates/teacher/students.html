@@ -55,6 +55,10 @@
           {% else %}不限{% endif %}
         </td>
         <td>
+          {% if r.sel and r.sel.STATUS in ('confirmed','waiting','wish','entry') %}
+          <a class="btn btn-default btn-sm" href="{{ url_for('teacher_kick', selection_id=r.sel.SEL_ID) }}"
+             title="学生退选次数用尽或截止锁定时，可在此代为退选">代退/退课</a>
+          {% endif %}
           <button class="btn btn-default btn-sm" title="展开后可录入课程名+分数，也可修改绩点"
                   onclick="var fs=this.closest('td').querySelectorAll('.score-form');var show=fs[0].style.display!=='flex';fs.forEach(function(f){f.style.display=show?'flex':'none';});">成绩/绩点录入</button>
           <form method="post" class="inline-form score-form" style="display:none;margin-top:8px;">
@@ -86,7 +90,7 @@
     {% for c in course_suggestions %}<option value="{{ c }}">{% endfor %}
   </datalist>
   <p class="flow-tip">提示：红色行为尚未选题的学生，可据此督促；「未选题」学生不占用任何课题名额。
-    「退选次数」显示 已用/上限，用尽的学生如需再退选会联系你；撤销学生误提交的志愿不计入其次数。
+    「退选次数」显示 已用/上限，用尽的学生可在学生端提交退选申请，你也可以直接点「代退/退课」代为处理（不计入学生次数）；撤销学生误提交的志愿同样不计入其次数。
     成绩与绩点由你维护，用于绩点优先放行、多志愿分配与课题前置要求核验；红色分数=挂科（&lt;60）。<br>「志愿待分配/待抽签」的学生，请到「选题监控」执行分配/抽签，或撤销后让学生重新提交。</p>
 </div>
 {% endblock %}

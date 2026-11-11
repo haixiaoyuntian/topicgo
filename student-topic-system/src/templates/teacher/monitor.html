@@ -10,6 +10,7 @@
     <p><b>候补递补：</b>自动递补模式下学生退选立即递补；手动模式下在「候补名单」中点「递补」按钮操作。</p>
     <p><b>撤销误提交：</b>学生填错志愿/报错名时，在「待分配/待抽签名单」或「候补名单」中点「撤销」，学生即可重新提交（撤销动作写日志）。</p>
     <p><b>前置要求退课：</b>「已选/候补名单与前置核验」中，红色行=成绩不满足课题前置要求，点「退课」填写原因与建议，学生立即收到站内通知（含原因、成绩明细、重选指引）。</p>
+    <p><b>教师代为退选：</b>学生退选次数用尽、截止前锁定或已进入志愿/报名阶段时无法自助退选，会提交「退选申请」或线下联系你；在下方申请卡片点「同意退选」即可代为退选（不计入学生次数，按递补策略释放名额并通知学生）。成绩满足前置要求的学生也可点「代退」直接处理。</p>
     <p><b>导出存档：</b>点「导出 CSV」下载自己课题的选题结果（含候补信息），用于存档上报。</p>
     <p><b>注意：</b>本页只统计你发布的课题和你名下的学生。</p>
   </div>
@@ -21,6 +22,42 @@
   <div class="stat-card"><div class="num">{{ wait_total }}</div><div class="label">候补人数</div></div>
   <div class="stat-card"><div class="num">{{ wish_total + entry_total }}</div><div class="label">待分配/待抽签</div></div>
 </div>
+
+{% if requests %}
+<div class="card" style="border-color:#ffa39e;">
+  <h3>📨 学生退选/改选申请（待处理 {{ requests|length }}）</h3>
+  <p class="flow-tip">学生退选次数用尽、已进入截止前锁定时间，或处于「志愿/报名」阶段时无法自行退选。
+  点「同意退选」后系统自动取消记录、按本轮递补策略处理，并给学生发站内通知（教师代退不计入学生退选次数）；驳回也会通知学生。</p>
+  <table>
+    <thead><tr><th>申请时间</th><th>轮次</th><th>题目</th><th>学生</th><th>当前状态</th><th>学生说明</th><th>处理</th></tr></thead>
+    <tbody>
+    {% for q in requests %}
+      <tr>
+        <td>{{ q.CREATED_AT }}</td>
+        <td>{{ q.ROUND_NAME or '-' }}</td>
+        <td>{{ q.TOPIC_CODE }} {{ q.TOPIC_NAME }}</td>
+        <td>{{ q.USER_NO }} {{ q.REAL_NAME }}{% if q.CLASS_NAME %}（{{ q.CLASS_NAME }}）{% endif %}</td>
+        <td>{{ status_names.get(q.SEL_STATUS, q.SEL_STATUS or '已失效') }}</td>
+        <td style="max-width:280px;">{{ q.REASON }}</td>
+        <td>
+          <form method="post" action="{{ url_for('teacher_cancel_request', req_id=q.ID) }}"
+                style="display:flex;flex-direction:column;gap:6px;min-width:170px;">
+            {{ csrf_input() }}
+            <input name="remark" maxlength="300" placeholder="教师意见（可空）" style="width:100%;">
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-primary btn-sm" name="action" value="approve"
+                      onclick="return confirm('同意后将取消该记录并按递补策略处理，确认？')">同意退选</button>
+              <button class="btn btn-default btn-sm" name="action" value="reject"
+                      onclick="return confirm('驳回后学生选题保持不变，确认？')">驳回</button>
+            </div>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if round and round.RULE == 'multi_wish' %}
 <div class="card">
@@ -115,15 +152,15 @@
           {% endif %}
         </td>
         <td>
-          {% if not e.prereq_ok %}
-          <a class="btn btn-danger btn-sm" href="{{ url_for('teacher_kick', selection_id=e.sel.ID) }}">退课</a>
-          {% else %}-{% endif %}
+          <a class="btn {{ 'btn-danger' if not e.prereq_ok else 'btn-default' }} btn-sm"
+             href="{{ url_for('teacher_kick', selection_id=e.sel.ID) }}">{{ '退课' if not e.prereq_ok else '代退' }}</a>
         </td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="flow-tip">红色行为成绩不满足前置要求的学生，可点「退课」填写原因与建议；退课后学生立即收到站内通知，名额按递补策略处理。</p>
+  <p class="flow-tip">红色行为成绩不满足前置要求的学生，点「退课」填写原因与建议；成绩满足但学生已无法自助退选（次数用尽/截止锁定）时点「代退」。
+  两种情况都会通知学生、留痕并按递补策略释放名额；教师操作不计入学生退选次数。</p>
 </div>
 {% endif %}
 

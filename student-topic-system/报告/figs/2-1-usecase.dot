@@ -1,0 +1,31 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.25", nodesep="0.35", ranksep="0.45"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.7];
+
+  rankdir=LR; node [shape=ellipse, style="filled", fillcolor="#ffffff", color="#7f9dc4", width=2.2];
+  edge [dir=none, color="#7f9dc4"];
+  student [shape=box, style="filled", fillcolor="#eaf2fb", label="学生", height=0.9, width=0.9];
+  teacher [shape=box, style="filled", fillcolor="#fff4e6", label="教师", height=0.9, width=0.9];
+  admin [shape=box, style="filled", fillcolor="#eaf7ee", label="管理员", height=0.9, width=0.9];
+
+  subgraph cluster_sys {
+    label="学生选题系统"; fontsize=13; color="#9db7d9"; style="rounded,dashed";
+    u1 [label="浏览开放课题"];
+    u2 [label="选题 / 加入候补"];
+    u3 [label="填报志愿 / 抽签报名"];
+    u4 [label="退选"];
+    u5 [label="提交退选申请"];
+    u6 [label="查看选题与通知"];
+    u7 [label="维护题库与前置要求"];
+    u8 [label="设置轮次与策略"];
+    u9 [label="监控 / 分配 / 抽签 / 递补"];
+    u10 [label="审批申请 / 代为退选"];
+    u11 [label="录入成绩与绩点"];
+    u12 [label="登记与管理人员账号"];
+  }
+  student -> u1; student -> u2; student -> u3; student -> u4; student -> u5; student -> u6;
+  teacher -> u7; teacher -> u8; teacher -> u9; teacher -> u10; teacher -> u11;
+  admin -> u12;
+}

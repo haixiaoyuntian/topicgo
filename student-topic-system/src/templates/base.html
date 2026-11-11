@@ -24,7 +24,7 @@
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_topics' }}" href="{{ url_for('teacher_topics') }}">🗂 题库维护</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_round' }}" href="{{ url_for('teacher_round') }}">⚙️ 选题轮次</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_students' }}" href="{{ url_for('teacher_students') }}">👨‍🎓 我的学生</a>
-    <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控</a>
+    <a class="menu-item {{ 'active' if request.endpoint=='teacher_monitor' }}" href="{{ url_for('teacher_monitor') }}">📊 选题监控{% if pending_requests %}<span class="badge">{{ pending_requests }}</span>{% endif %}</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_announce' }}" href="{{ url_for('teacher_announce') }}">📣 公告管理</a>
     <a class="menu-item {{ 'active' if request.endpoint=='teacher_logs' }}" href="{{ url_for('teacher_logs') }}">🧾 操作日志</a>
     {% else %}
@@ -38,10 +38,12 @@
         <a class="top-link" href="{{ url_for('home_page') }}">项目主页</a>
         <a class="top-link" href="{{ url_for('prototype_page') }}">原型演示</a>
         <a class="top-link" href="{{ url_for('guide_page') }}">使用流程</a>
-        {% if round is defined and round %}
-        <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' if round.RULE=='gpa_priority' else '多志愿分配' if round.RULE=='multi_wish' else '随机抽签' }}模式</span>
-        {% else %}
-        <span class="tag tag-red">● 当前无开放选题轮次</span>
+        {% if round is defined %}
+          {% if round %}
+          <span class="tag tag-green">● {{ round.ROUND_NAME }} · {{ '先到先得' if round.RULE=='first_come' else '绩点优先' if round.RULE=='gpa_priority' else '多志愿分配' if round.RULE=='multi_wish' else '随机抽签' }}模式</span>
+          {% else %}
+          <span class="tag tag-red">● 当前无开放选题轮次</span>
+          {% endif %}
         {% endif %}
       </div>
       <div>

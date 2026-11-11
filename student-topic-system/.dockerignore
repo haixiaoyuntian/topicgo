@@ -1,0 +1,11 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+src/topicgo.db
+src/topicgo.db-*
+tests
+报告
+验收
+design
+wiki/screenshots/*.psd

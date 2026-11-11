@@ -29,7 +29,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from db import BASE_DIR, get_conn, init_db, now_str
 
 app = Flask(__name__)
-app.secret_key = "topicgo-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "topicgo-secret-key")
 
 init_db()
 
@@ -75,11 +75,17 @@ RULE_NAMES = {
 ACTION_NAMES = {
     "select": "选题/报名",
     "cancel": "退选",
-    "kick": "前置退课",
+    "kick": "教师代退",
     "promote": "递补",
     "allocate": "志愿分配",
     "lottery": "抽签",
+    "request": "退选申请",
+    "approve": "同意代退",
+    "reject": "驳回申请",
 }
+# 有效选题状态（cancelled 以外的状态均占用/待处理名额）
+ACTIVE_STATUSES = ("confirmed", "waiting", "wish", "entry")
+REQUEST_STATUS_NAMES = {"pending": "待处理", "approved": "已同意", "rejected": "已驳回"}
 # 退选原因（必选，写入操作日志，便于教师审计）
 CANCEL_REASONS = [
     "选错了，想换题",
@@ -110,6 +116,71 @@ STATUS_NAMES = {
     "entry": "已报名待抽签",
     "cancelled": "已退选",
 }
+
+
+def to_int(value, default=0):
+    """表单数字安全转换：非法输入返回默认值，避免 500"""
+    try:
+        return int(str(value).strip())
+    except (ValueError, TypeError, AttributeError):
+        return default
+
+
+def round_is_open(rnd):
+    """轮次是否仍在开放时间窗内（用于退选/申请等写操作的服务端校验）"""
+    if not rnd or rnd["STATUS"] != "open":
+        return False
+    now = now_str()
+    return (rnd["START_AT"] or "") <= now <= (rnd["END_AT"] or "")
+
+
+def notify(conn, user_id, title, content, kind="system", topic_id=None, operator="system"):
+    """写一条站内通知（学生端可见，退课/递补/撤销/申请结果均通过它告知学生）"""
+    ts = now_str()
+    conn.execute(
+        "INSERT INTO NOTICES(USER_ID,TITLE,CONTENT,KIND,TOPIC_ID,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
+        " VALUES(?,?,?,?,?,?,?,?,1)",
+        (user_id, title, content, kind, topic_id, ts, operator, ts))
+
+
+def close_selection(conn, sel, rnd, operator, remark, action="cancel", notice=None,
+                    keep_request_id=None):
+    """关闭一条有效选题记录（退选/撤销/代退共用）：
+
+    1) 记录置 cancelled 并保留 CANCELLED_AT（不物理删除）；
+    2) 写操作日志（含原因）；
+    3) 若原状态为 confirmed 且递补策略为 auto，则候补首位自动递补并通知；
+    4) notice=(标题, 正文, 类型) 时给学生发站内通知；
+    5) 该记录上其它待处理申请自动关闭（keep_request_id 用于正在处理的申请）。
+    返回被递补的学生记录（无则 None）。
+    """
+    ts = now_str()
+    # 记录已被取消，同一记录上的其它待处理申请不再有意义，自动关闭避免僵尸待办
+    conn.execute(
+        "UPDATE CANCEL_REQUESTS SET STATUS='rejected', HANDLE_REMARK=?, HANDLED_BY=?,"
+        " HANDLED_AT=?, UPDATED_BY=?, UPDATED_AT=?"
+        " WHERE SELECTION_ID=? AND STATUS='pending' AND ID<>?",
+        ("选题记录已由其他操作取消，申请自动关闭", operator, ts, operator, ts,
+         sel["ID"], keep_request_id or 0))
+    conn.execute(
+        "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, QUEUE_NO=NULL,"
+        " UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+        (ts, operator, ts, sel["ID"]))
+    log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], action,
+              sel["STATUS"], "cancelled", wish_no=sel["WISH_NO"],
+              queue_no=sel["QUEUE_NO"], operator=operator, remark=remark)
+    promoted = None
+    if sel["STATUS"] == "confirmed" and rnd:
+        if rnd["PROMOTE_MODE"] == "auto":
+            promoted = promote_next(conn, rnd, sel["TOPIC_ID"], operator="system")
+        elif rnd["PROMOTE_MODE"] == "manual":
+            log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], None, "promote",
+                      remark="名额待教师手动递补", operator="system")
+    if notice:
+        title, content, kind = notice
+        notify(conn, sel["USER_ID"], title, content, kind=kind,
+               topic_id=sel["TOPIC_ID"], operator=operator)
+    return promoted
 
 
 # ---------------- 工具 ----------------
@@ -200,6 +271,14 @@ def promote_next(conn, rnd, topic_id, operator="system"):
     log_event(conn, rnd["ID"], topic_id, nxt["USER_ID"], "promote",
               "waiting", "confirmed", queue_no=nxt["QUEUE_NO"], operator=operator,
               remark="退选自动递补" if operator != "teacher" else "教师手动递补")
+    topic = conn.execute("SELECT TOPIC_NAME, TOPIC_CODE FROM TOPICS WHERE ID=?",
+                         (topic_id,)).fetchone()
+    if topic:
+        notify(conn, nxt["USER_ID"],
+               f"《{topic['TOPIC_NAME']}》候补递补成功",
+               f"同学你好，你在《{topic['TOPIC_NAME']}》（{topic['TOPIC_CODE']}）的候补已递补成功，"
+               f"当前状态为「已确认」。\n\n【下一步】请到「我的选题」查看，并按教师要求开始课题。",
+               kind="promote", topic_id=topic_id, operator=operator)
     return nxt
 
 
@@ -410,22 +489,7 @@ def student_select(topic_id):
         flash(f"本轮仅限班级 [{rnd['ALLOW_CLASSES']}] 选题", "error")
         conn.close()
         return redirect(url_for("student_browse"))
-    if user_active_selection(conn, rnd["ID"], user["ID"]):
-        flash("每人限选 1 题，你已有选题记录", "error")
-        conn.close()
-        return redirect(url_for("student_browse"))
-    if rnd["RULE"] == "gpa_priority":
-        higher = conn.execute(
-            "SELECT COUNT(*) c FROM USERS u WHERE u.ROLE='student' AND u.GPA>? AND u.FLAG=1"
-            " AND u.STATUS='active' AND u.ADVISOR_ID=? AND NOT EXISTS(SELECT 1 FROM SELECTIONS s"
-            " WHERE s.ROUND_ID=? AND s.USER_ID=u.ID AND s.STATUS='confirmed')",
-            (user["GPA"], user["ADVISOR_ID"], rnd["ID"]),
-        ).fetchone()["c"]
-        if higher > 0:
-            flash(f"绩点优先模式下，还有 {higher} 位绩点高于你的同学未选题，请稍候", "error")
-            conn.close()
-            return redirect(url_for("student_browse"))
-    # 只能选自己老师发布的、且面向自己班级的课题
+    # 先校验题目归属与可见性，再校验是否已有选题（错误提示更准确）
     topic = conn.execute(
         "SELECT * FROM TOPICS WHERE ID=? AND STATUS='open' AND FLAG=1 AND TEACHER_ID=?",
         (topic_id, user["ADVISOR_ID"])).fetchone()
@@ -437,6 +501,24 @@ def student_select(topic_id):
         flash("该题目未面向你的班级开放", "error")
         conn.close()
         return redirect(url_for("student_browse"))
+    if user_active_selection(conn, rnd["ID"], user["ID"]):
+        flash("每人限选 1 题，你已有选题记录", "error")
+        conn.close()
+        return redirect(url_for("student_browse"))
+    if rnd["RULE"] == "gpa_priority":
+        # 只统计「同样能看到该题、且尚未有有效记录」的高绩点同学，
+        # 避免其他班级/已选题的同学把名额长期卡住（否则低绩点同学永远选不了）
+        rows = conn.execute(
+            "SELECT u.GPA, u.CLASS_NAME FROM USERS u WHERE u.ROLE='student' AND u.GPA>? AND u.FLAG=1"
+            " AND u.STATUS='active' AND u.ADVISOR_ID=? AND NOT EXISTS(SELECT 1 FROM SELECTIONS s"
+            " WHERE s.ROUND_ID=? AND s.USER_ID=u.ID AND s.STATUS IN ('confirmed','waiting','wish','entry'))",
+            (user["GPA"], user["ADVISOR_ID"], rnd["ID"]),
+        ).fetchall()
+        higher = sum(1 for u in rows if topic_visible(topic, u["CLASS_NAME"]))
+        if higher > 0:
+            flash(f"绩点优先模式下，还有 {higher} 位绩点高于你的同学未选题，请稍候", "error")
+            conn.close()
+            return redirect(url_for("student_browse"))
     # 前置要求预警：不满足仍允许选（由教师按前置门槛决定是否退课），但明确提示
     ok, missing = prereq_check(conn, user["ID"], topic)
     if not ok:
@@ -602,12 +684,17 @@ def student_cancel(selection_id):
         conn.close()
         return redirect(url_for("student_mine"))
     rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (sel["ROUND_ID"],)).fetchone()
+    if not round_is_open(rnd):
+        flash("该轮次已截止，不能自行退选；如需调整请提交「退选申请」由指导教师代为处理", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
     # 方案2：每轮退选次数上限（教师撤销不计入学生次数）
     max_cancel = (rnd["MAX_CANCEL"] or 0) if rnd else 0
     if max_cancel > 0:
         used = student_cancel_used(conn, sel["ROUND_ID"], session["user_id"], session["user_name"])
         if used >= max_cancel:
-            flash(f"本轮退选次数已用完（上限 {max_cancel} 次），如需再退选请联系任课教师", "error")
+            flash(f"本轮退选次数已用完（上限 {max_cancel} 次），"
+                  f"请在「我的选题」提交退选申请，由指导教师代为退选", "error")
             conn.close()
             return redirect(url_for("student_mine"))
     # 方案4：截止前禁止退选，避免名额在截止后空置
@@ -615,7 +702,8 @@ def student_cancel(selection_id):
     if lock_hours > 0:
         end = parse_dt(rnd["END_AT"]) if rnd else None
         if end and datetime.now() > end - timedelta(hours=lock_hours):
-            flash(f"截止前 {lock_hours} 小时内不能退选，如需退选请联系任课教师", "error")
+            flash(f"截止前 {lock_hours} 小时内不能退选（已进入截止前锁定），"
+                  f"如需退选请在「我的选题」提交退选申请，由指导教师代为处理", "error")
             conn.close()
             return redirect(url_for("student_mine"))
     # 方案4：退选原因必选（写入日志，便于审计）
@@ -624,25 +712,9 @@ def student_cancel(selection_id):
         flash("请选择退选原因", "error")
         conn.close()
         return redirect(url_for("student_mine"))
-    ts = now_str()
     conn.execute("BEGIN IMMEDIATE")
-    # 1) 原记录置为 cancelled（保留历史，不删除）
-    conn.execute(
-        "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, QUEUE_NO=NULL,"
-        " UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
-        (ts, session["user_name"], ts, selection_id))
-    log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "cancel",
-              sel["STATUS"], "cancelled", wish_no=sel["WISH_NO"],
-              queue_no=sel["QUEUE_NO"], operator=session["user_name"],
-              remark=f"学生退选（原因：{reason}）")
-    promoted = None
-    # 2) 仅"已确认"退选才释放名额；候补退出不触发递补
-    if sel["STATUS"] == "confirmed":
-        if rnd["PROMOTE_MODE"] == "auto":
-            promoted = promote_next(conn, rnd, sel["TOPIC_ID"], operator="system")
-        elif rnd["PROMOTE_MODE"] == "manual":
-            log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], None, "promote",
-                      remark="名额待教师手动递补", operator="system")
+    promoted = close_selection(conn, sel, rnd, session["user_name"],
+                               f"学生退选（原因：{reason}）", action="cancel")
     conn.execute("COMMIT")
     msg = "已退选，记录已保留在「我的记录」中"
     if promoted:
@@ -654,34 +726,103 @@ def student_cancel(selection_id):
     return redirect(url_for("student_mine"))
 
 
+@app.route("/student/cancel-request/<int:selection_id>", methods=["POST"])
+@login_required("student")
+def student_cancel_request(selection_id):
+    """提交退选/改选申请。
+
+    退选次数用尽、截止前锁定、或处于志愿/报名阶段时，学生自己无法退选，
+    由教师在这里闭环处理（同意后按同一递补策略释放名额并通知学生）。
+    """
+    conn = get_conn()
+    sel = conn.execute("SELECT * FROM SELECTIONS WHERE ID=?", (selection_id,)).fetchone()
+    if not sel or sel["USER_ID"] != session["user_id"] or sel["STATUS"] not in ACTIVE_STATUSES:
+        flash("记录不存在或已不在有效状态", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
+    rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (sel["ROUND_ID"],)).fetchone()
+    if not round_is_open(rnd):
+        flash("该轮次已截止，无法再提交退选申请", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
+    reason = request.form.get("reason", "").strip()
+    if len(reason) < 4:
+        flash("请填写退选/改选原因（不少于 4 个字），便于教师判断", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
+    if len(reason) > 300:
+        flash("原因过长（最多 300 字）", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
+    if conn.execute("SELECT ID FROM CANCEL_REQUESTS WHERE SELECTION_ID=? AND STATUS='pending'",
+                    (selection_id,)).fetchone():
+        flash("你已提交过该记录的申请，请等待教师处理", "error")
+        conn.close()
+        return redirect(url_for("student_mine"))
+    ts = now_str()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "INSERT INTO CANCEL_REQUESTS(ROUND_ID,TOPIC_ID,USER_ID,SELECTION_ID,REASON,STATUS,"
+            "CREATED_BY,CREATED_AT,FLAG) VALUES(?,?,?,?,?,'pending',?,?,1)",
+            (sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], selection_id, reason,
+             session["user_name"], ts))
+        log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "request",
+                  sel["STATUS"], sel["STATUS"], operator=session["user_name"],
+                  remark=f"学生提交退选/改选申请：{reason}")
+        conn.execute("COMMIT")
+        flash("申请已提交，教师处理后会收到站内通知；紧急情况也可直接联系指导教师", "success")
+    except sqlite3.IntegrityError:
+        conn.execute("ROLLBACK")
+        flash("你已提交过该记录的申请，请等待教师处理", "error")
+    finally:
+        conn.close()
+    return redirect(url_for("student_mine"))
+
+
 @app.route("/student/mine")
 @login_required("student")
 def student_mine():
-    """我的选题 + 历史记录（含退选痕迹）"""
+    """我的选题 + 历史记录（含退选痕迹）+ 退选申请进度"""
     conn = get_conn()
     user = current_user(conn)
     rnd = active_round(conn, user["ADVISOR_ID"]) or own_round_for_student(conn, user)
-    active, history = [], []
-    if rnd:
-        rows = conn.execute(
-            "SELECT s.*, t.TOPIC_NAME, t.TOPIC_CODE, t.MAX_NUM, r.ROUND_NAME, r.RULE"
-            " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN ROUNDS r ON r.ID=s.ROUND_ID"
-            " WHERE s.ROUND_ID=? AND s.USER_ID=? ORDER BY s.ID DESC",
-            (rnd["ID"], user["ID"]),
-        ).fetchall()
-        active = [r for r in rows if r["STATUS"] in ("confirmed", "waiting", "wish", "entry")]
-        history = [r for r in rows if r["STATUS"] == "cancelled"]
+    # 跨轮次展示：新轮次开始后，上一轮的选题与退选记录仍然可查；
+    # 只按学生本人过滤（指导教师变更后历史记录仍然可见，不会凭空消失）
+    rows = conn.execute(
+        "SELECT s.*, t.TOPIC_NAME, t.TOPIC_CODE, t.MAX_NUM, r.ROUND_NAME, r.RULE"
+        " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN ROUNDS r ON r.ID=s.ROUND_ID"
+        " WHERE s.USER_ID=? ORDER BY r.ID DESC, s.ID DESC",
+        (user["ID"],),
+    ).fetchall()
+    active = [r for r in rows if r["STATUS"] in ACTIVE_STATUSES]
+    history = [r for r in rows if r["STATUS"] == "cancelled"]
     # 退选次数配额（方案2）：已用/上限，供页面提示
     cancel_used = cancel_max = 0
     if rnd:
         cancel_max = rnd["MAX_CANCEL"] or 0
         if cancel_max > 0:
             cancel_used = student_cancel_used(conn, rnd["ID"], user["ID"], user["USER_NAME"])
+    # 是否已被「次数上限 / 截止锁定」挡住自助退选
+    quota_blocked = bool(cancel_max and cancel_used >= cancel_max)
+    lock_blocked = False
+    if rnd and (rnd["CANCEL_LOCK_HOURS"] or 0) > 0:
+        end = parse_dt(rnd["END_AT"])
+        lock_blocked = bool(end and datetime.now() > end - timedelta(hours=rnd["CANCEL_LOCK_HOURS"]))
+    # 我的退选申请（含处理结果）
+    reqs = conn.execute(
+        "SELECT q.*, t.TOPIC_NAME, t.TOPIC_CODE FROM CANCEL_REQUESTS q"
+        " LEFT JOIN TOPICS t ON t.ID=q.TOPIC_ID WHERE q.USER_ID=? AND q.FLAG=1"
+        " ORDER BY q.ID DESC LIMIT 20", (user["ID"],)).fetchall()
+    pending_ids = {q["SELECTION_ID"] for q in reqs if q["STATUS"] == "pending"}
     conn.close()
     return render_template("student/mine.html", active=active, history=history, round=rnd,
                            rule_name=RULE_NAMES.get(rnd["RULE"] if rnd else "", ""),
                            status_names=STATUS_NAMES, cancel_reasons=CANCEL_REASONS,
-                           cancel_used=cancel_used, cancel_max=cancel_max)
+                           cancel_used=cancel_used, cancel_max=cancel_max,
+                           quota_blocked=quota_blocked, lock_blocked=lock_blocked,
+                           reqs=reqs, pending_ids=pending_ids,
+                           request_status_names=REQUEST_STATUS_NAMES)
 
 
 def own_round_for_student(conn, user):
@@ -696,17 +837,21 @@ def own_round_for_student(conn, user):
 @app.route("/student/public")
 @login_required("student")
 def student_public():
-    """结果公示：只能看到自己指导教师课题的选题结果"""
+    """结果公示：只看自己指导教师「本轮」的选题结果（历史轮次不混入，避免误读）"""
     conn = get_conn()
     user = current_user(conn)
-    rows = conn.execute(
-        "SELECT t.TOPIC_CODE, t.TOPIC_NAME, u.REAL_NAME, u.CLASS_NAME, s.SELECTED_AT, s.STATUS"
-        " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN USERS u ON u.ID=s.USER_ID"
-        " WHERE s.STATUS='confirmed' AND t.TEACHER_ID=? ORDER BY t.TOPIC_CODE, s.SELECTED_AT",
-        (user["ADVISOR_ID"],),
-    ).fetchall()
+    rnd = active_round(conn, user["ADVISOR_ID"]) or own_round_for_student(conn, user)
+    rows = []
+    if rnd:
+        rows = conn.execute(
+            "SELECT t.TOPIC_CODE, t.TOPIC_NAME, u.REAL_NAME, u.CLASS_NAME, s.SELECTED_AT, s.STATUS"
+            " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN USERS u ON u.ID=s.USER_ID"
+            " WHERE s.STATUS='confirmed' AND s.ROUND_ID=? AND t.TEACHER_ID=?"
+            " ORDER BY t.TOPIC_CODE, s.SELECTED_AT",
+            (rnd["ID"], user["ADVISOR_ID"]),
+        ).fetchall()
     conn.close()
-    return render_template("student/public.html", rows=rows)
+    return render_template("student/public.html", rows=rows, round=rnd)
 
 
 # ---------------- 教师端：首页（Dashboard） ----------------
@@ -745,12 +890,17 @@ def teacher_index():
             "SELECT COUNT(*) c FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
             " WHERE s.ROUND_ID=? AND s.STATUS='waiting' AND t.TEACHER_ID=?",
             (rnd["ID"], session["user_id"])).fetchone()["c"]
+    todo_request = conn.execute(
+        "SELECT COUNT(*) c FROM CANCEL_REQUESTS q JOIN TOPICS t ON t.ID=q.TOPIC_ID"
+        " WHERE q.STATUS='pending' AND q.FLAG=1 AND t.TEACHER_ID=?",
+        (session["user_id"],)).fetchone()["c"]
     picked_students = sum(1 for s in students if s["ID"] in sel_map and sel_map[s["ID"]]["STATUS"] == "confirmed")
     classes = teacher_classes(conn, session["user_id"])
     conn.close()
     return render_template("teacher/index.html", round=rnd, topics=topics, students=students,
                            sel_map=sel_map, todo_wish=todo_wish, todo_entry=todo_entry,
-                           todo_wait=todo_wait, picked_students=picked_students,
+                           todo_wait=todo_wait, todo_request=todo_request,
+                           picked_students=picked_students,
                            rule_names=RULE_NAMES, classes=classes)
 
 
@@ -766,7 +916,7 @@ def teacher_students():
         ts = now_str()
         if action == "save_gpa":
             # 教师维护自己学生的绩点（绩点优先/多志愿分配策略据此放行）
-            uid = int(request.form["user_id"])
+            uid = to_int(request.form.get("user_id"))
             own = conn.execute("SELECT ID FROM USERS WHERE ID=? AND ROLE='student' AND ADVISOR_ID=?",
                                (uid, session["user_id"])).fetchone()
             if not own:
@@ -783,7 +933,7 @@ def teacher_students():
                 except ValueError:
                     flash("绩点格式不正确", "error")
         elif action == "save_score":
-            uid = int(request.form["user_id"])
+            uid = to_int(request.form.get("user_id"))
             own = conn.execute("SELECT ID FROM USERS WHERE ID=? AND ROLE='student' AND ADVISOR_ID=?",
                                (uid, session["user_id"])).fetchone()
             if not own:
@@ -840,7 +990,8 @@ def teacher_students():
     sel_map = {}
     if rnd:
         for r in conn.execute(
-                "SELECT s.USER_ID, s.STATUS, s.WISH_NO, s.QUEUE_NO, t.TOPIC_NAME, t.TOPIC_CODE"
+                "SELECT s.ID AS SEL_ID, s.USER_ID, s.STATUS, s.WISH_NO, s.QUEUE_NO,"
+                " t.TOPIC_NAME, t.TOPIC_CODE"
                 " FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
                 " WHERE s.ROUND_ID=? AND s.STATUS IN('confirmed','waiting','wish','entry')",
                 (rnd["ID"],)).fetchall():
@@ -930,11 +1081,14 @@ def teacher_topics():
                         continue
             return text, (json.dumps(rules, ensure_ascii=False) if rules else None)
 
+        max_num = to_int(request.form.get("max_num"), 0)
         if action == "add":
             code = request.form.get("topic_code", "").strip()
             tname = request.form.get("topic_name", "").strip()
             if not code or not tname:
                 flash("题目编号与名称不能为空", "error")
+            elif max_num < 1 or max_num > 99:
+                flash("人数上限需为 1~99 的整数", "error")
             elif conn.execute("SELECT ID FROM TOPICS WHERE TOPIC_CODE=?", (code,)).fetchone():
                 flash("题目编号已存在", "error")
             else:
@@ -945,15 +1099,22 @@ def teacher_topics():
                     " VALUES(?,?,?,?,?,?,?,?,?,?, 'teacher', ?,1)",
                     (code, tname, request.form.get("topic_desc", ""),
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
-                     int(request.form.get("max_num", 4)), session["user_id"], target,
-                     ptext, prules, ts))
+                     max_num, session["user_id"], target, ptext, prules, ts))
                 flash("题目已创建", "success")
         elif action == "edit":
             # 仅能修改自己的课题
             own = conn.execute("SELECT ID FROM TOPICS WHERE ID=? AND TEACHER_ID=?",
-                               (int(request.form["topic_id"]), session["user_id"])).fetchone()
+                               (to_int(request.form.get("topic_id")), session["user_id"])).fetchone()
+            confirmed_n = conn.execute(
+                "SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=? AND STATUS='confirmed'",
+                (own["ID"],)).fetchone()["c"] if own else 0
             if not own:
                 flash("无权修改他人课题", "error")
+            elif max_num < 1 or max_num > 99:
+                flash("人数上限需为 1~99 的整数", "error")
+            elif max_num < confirmed_n:
+                flash(f"该题已有 {confirmed_n} 人确认，人数上限不能低于 {confirmed_n}；"
+                      f"如需缩减请先在监控页退课/代退", "error")
             else:
                 target = ",".join(request.form.getlist("target_classes"))
                 ptext, prules = parse_prereq()
@@ -961,13 +1122,12 @@ def teacher_topics():
                     "UPDATE TOPICS SET TOPIC_NAME=?,TOPIC_DESC=?,TAG=?,DIFFICULTY=?,MAX_NUM=?,TARGET_CLASSES=?,PREREQ_TEXT=?,PREREQ_RULES=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
                     (request.form["topic_name"].strip(), request.form.get("topic_desc", ""),
                      request.form.get("tag", ""), request.form.get("difficulty", "中等"),
-                     int(request.form.get("max_num", 4)), target, ptext, prules,
-                     me, ts, int(request.form["topic_id"])))
+                     max_num, target, ptext, prules, me, ts, own["ID"]))
                 flash("题目已更新", "success")
         elif action == "toggle":
             # 课题关闭/重新开放（仅自己的课题）
             own = conn.execute("SELECT ID, STATUS FROM TOPICS WHERE ID=? AND TEACHER_ID=?",
-                               (int(request.form["topic_id"]), session["user_id"])).fetchone()
+                               (to_int(request.form.get("topic_id")), session["user_id"])).fetchone()
             if not own:
                 flash("无权操作他人课题", "error")
             else:
@@ -975,7 +1135,18 @@ def teacher_topics():
                 conn.execute(
                     "UPDATE TOPICS SET STATUS=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
                     (new_status, me, ts, own["ID"]))
-                flash(f"课题已{'关闭（学生不可见）' if new_status == 'closed' else '重新开放'}", "success")
+                if new_status == "closed":
+                    n = conn.execute(
+                        "SELECT COUNT(*) c FROM SELECTIONS WHERE TOPIC_ID=?"
+                        " AND STATUS IN ('confirmed','waiting','wish','entry')",
+                        (own["ID"],)).fetchone()["c"]
+                    if n:
+                        flash(f"课题已关闭（学生不可见），已有 {n} 条选题记录保留；"
+                              f"如需调整学生选题，请到「选题监控」退课/代退", "success")
+                    else:
+                        flash("课题已关闭（学生不可见）", "success")
+                else:
+                    flash("课题已重新开放", "success")
         conn.commit()
         conn.close()
         return redirect(url_for("teacher_topics"))
@@ -1037,6 +1208,10 @@ def teacher_round():
                 flash("轮次名称与起止时间不能为空", "error")
                 conn.close()
                 return redirect(url_for("teacher_round"))
+            if parse_dt(start_at) and parse_dt(end_at) and parse_dt(start_at) >= parse_dt(end_at):
+                flash("开始时间必须早于结束时间", "error")
+                conn.close()
+                return redirect(url_for("teacher_round"))
             conn.execute(
                 "INSERT INTO ROUNDS(ROUND_NAME,TEACHER_ID,RULE,START_AT,END_AT,WAITLIST_ON,PROMOTE_MODE,"
                 "MAX_WISH,LOTTERY_SEED,ALLOW_CLASSES,MAX_CANCEL,CANCEL_LOCK_HOURS,STATUS,CREATED_BY,CREATED_AT,FLAG)"
@@ -1044,11 +1219,11 @@ def teacher_round():
                 (name, session["user_id"], rule, start_at, end_at,
                  0 if request.form.get("waitlist_on") == "0" else 1,  # 缺省开启候补（与表默认值一致）
                  request.form.get("promote_mode", "auto"),
-                 int(request.form.get("max_wish", 3) or 3),
+                 max(1, to_int(request.form.get("max_wish"), 3)),
                  request.form.get("lottery_seed", "").strip() or None,
                  request.form.get("allow_classes", "").strip() or None,
-                 int(request.form.get("max_cancel", 2) or 0),
-                 int(request.form.get("cancel_lock_hours", 2) or 0),
+                 max(0, to_int(request.form.get("max_cancel"), 2)),
+                 max(0, to_int(request.form.get("cancel_lock_hours"), 2)),
                  request.form.get("status", "open"), ts))
             conn.commit()
             flash(f"轮次「{name}」已创建（最新轮次即时生效）", "success")
@@ -1056,13 +1231,22 @@ def teacher_round():
             return redirect(url_for("teacher_round"))
         rnd_id = request.form.get("round_id")
         own = conn.execute("SELECT ID FROM ROUNDS WHERE ID=? AND TEACHER_ID=?",
-                           (int(rnd_id), session["user_id"])).fetchone() if rnd_id else None
+                           (to_int(rnd_id), session["user_id"])).fetchone() if rnd_id else None
         if not own:
             flash("无权修改他人轮次", "error")
             conn.close()
             return redirect(url_for("teacher_round"))
         old = conn.execute("SELECT RULE FROM ROUNDS WHERE ID=?", (own["ID"],)).fetchone()
         new_rule = request.form.get("rule", "first_come")
+        s_at, e_at = request.form.get("start_at", "").strip(), request.form.get("end_at", "").strip()
+        if not s_at or not e_at:
+            flash("开始时间与结束时间不能为空", "error")
+            conn.close()
+            return redirect(url_for("teacher_round"))
+        if parse_dt(s_at) and parse_dt(e_at) and parse_dt(s_at) >= parse_dt(e_at):
+            flash("开始时间必须早于结束时间", "error")
+            conn.close()
+            return redirect(url_for("teacher_round"))
         pending_wish = conn.execute(
             "SELECT COUNT(*) c FROM SELECTIONS WHERE ROUND_ID=? AND STATUS='wish'",
             (own["ID"],)).fetchone()["c"]
@@ -1081,13 +1265,14 @@ def teacher_round():
         conn.execute(
             "UPDATE ROUNDS SET ROUND_NAME=?,RULE=?,START_AT=?,END_AT=?,WAITLIST_ON=?,PROMOTE_MODE=?,"
             "MAX_WISH=?,LOTTERY_SEED=?,ALLOW_CLASSES=?,MAX_CANCEL=?,CANCEL_LOCK_HOURS=?,STATUS=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
-            (request.form["round_name"], new_rule, request.form["start_at"],
-             request.form["end_at"], 1 if request.form.get("waitlist_on") else 0,
-             request.form.get("promote_mode", "auto"), int(request.form.get("max_wish", 3)),
+            (request.form.get("round_name", "").strip(), new_rule, s_at,
+             e_at, 1 if request.form.get("waitlist_on") else 0,
+             request.form.get("promote_mode", "auto"),
+             max(1, to_int(request.form.get("max_wish"), 3)),
              request.form.get("lottery_seed", "").strip() or None,
              request.form.get("allow_classes", "").strip() or None,
-             int(request.form.get("max_cancel", 2) or 0),
-             int(request.form.get("cancel_lock_hours", 2) or 0),
+             max(0, to_int(request.form.get("max_cancel"), 2)),
+             max(0, to_int(request.form.get("cancel_lock_hours"), 2)),
              request.form.get("status", "open"), session["user_name"], ts, own["ID"]))
         conn.commit()
         flash("轮次设置已保存", "success")
@@ -1161,12 +1346,23 @@ def teacher_monitor():
                 (rnd["ID"], session["user_id"])).fetchall():
             ok, missing = prereq_check(conn, r["USER_ID"], r)
             enrolled.append(dict(sel=r, prereq_ok=ok, missing=missing))
+    # 学生退选/改选申请：不限当前轮次，避免轮次切换后申请卡在待处理
+    requests = conn.execute(
+        "SELECT q.*, t.TOPIC_CODE, t.TOPIC_NAME, u.REAL_NAME, u.USER_NO, u.CLASS_NAME,"
+        " s.STATUS AS SEL_STATUS, s.WISH_NO, s.QUEUE_NO, rd.ROUND_NAME"
+        " FROM CANCEL_REQUESTS q JOIN TOPICS t ON t.ID=q.TOPIC_ID"
+        " JOIN USERS u ON u.ID=q.USER_ID"
+        " LEFT JOIN SELECTIONS s ON s.ID=q.SELECTION_ID"
+        " LEFT JOIN ROUNDS rd ON rd.ID=q.ROUND_ID"
+        " WHERE q.STATUS='pending' AND q.FLAG=1 AND t.TEACHER_ID=?"
+        " ORDER BY q.ID", (session["user_id"],)).fetchall()
     conn.close()
     return render_template("teacher/monitor.html", rows=rows, round=rnd,
                            total_picked=total_picked, total_left=total_left,
                            wait_total=wait_total, wish_total=wish_total,
                            entry_total=entry_total, rule_names=RULE_NAMES, waiters=waiters,
-                           pending=pending, enrolled=enrolled)
+                           pending=pending, enrolled=enrolled, requests=requests,
+                           status_names=STATUS_NAMES)
 
 
 @app.route("/teacher/allocate", methods=["POST"])
@@ -1237,9 +1433,11 @@ def teacher_allocate():
                 stats[w["TOPIC_ID"]] = used + 1
                 assigned.add(w["USER_ID"])
                 promoted_ids.add(w["ID"])
-        for w in all_wishes:
-            if w["ID"] in promoted_ids or w["ID"] in closed_ids:
-                continue
+        # 第二轮：已命中的其余志愿作废；未命中的按「最小志愿序号」转候补
+        # （修复：只填第二志愿、未填第一志愿的学生原本会永久停留在 wish 状态）
+        remaining = [w for w in all_wishes
+                     if w["ID"] not in promoted_ids and w["ID"] not in closed_ids]
+        for w in remaining:
             if w["USER_ID"] in assigned:
                 conn.execute(
                     "UPDATE SELECTIONS SET STATUS='cancelled', UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
@@ -1247,19 +1445,32 @@ def teacher_allocate():
                 log_event(conn, rnd["ID"], w["TOPIC_ID"], w["USER_ID"], "allocate",
                           "wish", "cancelled", wish_no=w["WISH_NO"],
                           operator=session["user_name"], remark="已命中其他志愿，本志愿作废")
-                continue
-            if w["WISH_NO"] == 1:
-                q = conn.execute(
-                    "SELECT COALESCE(MAX(QUEUE_NO),0)+1 q FROM SELECTIONS"
-                    " WHERE ROUND_ID=? AND TOPIC_ID=? AND STATUS='waiting'",
-                    (rnd["ID"], w["TOPIC_ID"])).fetchone()["q"]
+        by_user = {}
+        for w in remaining:
+            if w["USER_ID"] not in assigned:
+                by_user.setdefault(w["USER_ID"], []).append(w)
+        for uid, ws in by_user.items():
+            ws.sort(key=lambda x: (x["WISH_NO"] or 99, x["ID"]))
+            first = ws[0]
+            q = conn.execute(
+                "SELECT COALESCE(MAX(QUEUE_NO),0)+1 q FROM SELECTIONS"
+                " WHERE ROUND_ID=? AND TOPIC_ID=? AND STATUS='waiting'",
+                (rnd["ID"], first["TOPIC_ID"])).fetchone()["q"]
+            conn.execute(
+                "UPDATE SELECTIONS SET STATUS='waiting', QUEUE_NO=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                (q, session["user_name"], ts, first["ID"]))
+            log_event(conn, rnd["ID"], first["TOPIC_ID"], uid, "allocate",
+                      "wish", "waiting", wish_no=first["WISH_NO"], queue_no=q,
+                      operator=session["user_name"],
+                      remark=f"未命中志愿，按第{first['WISH_NO']}志愿转候补")
+            for w in ws[1:]:
                 conn.execute(
-                    "UPDATE SELECTIONS SET STATUS='waiting', QUEUE_NO=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
-                    (q, session["user_name"], ts, w["ID"]))
-                log_event(conn, rnd["ID"], w["TOPIC_ID"], w["USER_ID"], "allocate",
-                          "wish", "waiting", wish_no=w["WISH_NO"], queue_no=q,
-                          operator=session["user_name"], remark="未命中志愿，转第一志愿候补")
-                assigned.add(w["USER_ID"])
+                    "UPDATE SELECTIONS SET STATUS='cancelled', UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                    (session["user_name"], ts, w["ID"]))
+                log_event(conn, rnd["ID"], w["TOPIC_ID"], uid, "allocate",
+                          "wish", "cancelled", wish_no=w["WISH_NO"],
+                          operator=session["user_name"], remark="未命中志愿，本志愿作废")
+            assigned.add(uid)
         conn.execute("COMMIT")
         flash(f"分配完成：共处理 {len(assigned)} 名学生，全部动作已记录日志", "success")
     except Exception as e:
@@ -1307,6 +1518,24 @@ def teacher_lottery():
                 "SELECT DISTINCT USER_ID FROM SELECTIONS WHERE ROUND_ID=? AND STATUS='confirmed'",
                 (rnd["ID"],)).fetchall():
             confirmed_users.add(r["USER_ID"])
+        # 课题已关闭/删除的报名：抽签只处理开放课题，这类记录必须显式作废，
+        # 否则学生会永久停留在「已报名待抽签」（功能不闭环）
+        stray = conn.execute(
+            "SELECT s.*, t.TOPIC_NAME FROM SELECTIONS s JOIN TOPICS t ON t.ID=s.TOPIC_ID"
+            " WHERE s.ROUND_ID=? AND s.STATUS='entry' AND t.TEACHER_ID=?"
+            " AND (t.STATUS!='open' OR t.FLAG=0)",
+            (rnd["ID"], session["user_id"])).fetchall()
+        for e in stray:
+            conn.execute(
+                "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                (ts, session["user_name"], ts, e["ID"]))
+            log_event(conn, rnd["ID"], e["TOPIC_ID"], e["USER_ID"], "lottery",
+                      "entry", "cancelled", operator=session["user_name"],
+                      remark=f"课题已关闭/删除，报名作废（种子 {seed}）")
+            notify(conn, e["USER_ID"], f"《{e['TOPIC_NAME']}》已关闭，报名已作废",
+                   f"同学你好，你报名的《{e['TOPIC_NAME']}》已被教师关闭，本次抽签无法参与该题。\n\n"
+                   f"【下一步】请到「浏览题库」重新选择仍在开放的课题；如有疑问请联系指导教师。",
+                   kind="kick", topic_id=e["TOPIC_ID"], operator=session["user_name"])
         for t in topics:
             entries = conn.execute(
                 "SELECT s.*, u.GPA FROM SELECTIONS s JOIN USERS u ON u.ID=s.USER_ID"
@@ -1370,17 +1599,18 @@ def teacher_revoke(selection_id):
         flash("无权操作他人课题的记录", "error")
         conn.close()
         return redirect(url_for("teacher_monitor"))
-    ts = now_str()
+    rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (sel["ROUND_ID"],)).fetchone()
+    stage = {"wish": "志愿", "entry": "报名", "waiting": "候补"}.get(sel["STATUS"], "选题")
+    notice = (f"你在《{sel['TOPIC_NAME']}》的{stage}记录已被教师撤销",
+              f"同学你好，你在《{sel['TOPIC_NAME']}》的{stage}记录已被指导教师撤销（多用于误提交补救）。\n\n"
+              f"【说明】撤销由教师操作，不计入你的退选次数。\n\n"
+              f"【下一步】请到对应的「志愿填报 / 浏览题库」页面重新提交；如有疑问请联系指导教师。",
+              "revoke")
     conn.execute("BEGIN IMMEDIATE")
-    conn.execute(
-        "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, QUEUE_NO=NULL,"
-        " UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
-        (ts, session["user_name"], ts, selection_id))
-    log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "cancel",
-              sel["STATUS"], "cancelled", wish_no=sel["WISH_NO"], queue_no=sel["QUEUE_NO"],
-              operator=session["user_name"], remark="教师撤销（志愿/报名/候补）")
+    close_selection(conn, sel, rnd, session["user_name"], "教师撤销（志愿/报名/候补）",
+                    action="cancel", notice=notice)
     conn.execute("COMMIT")
-    flash(f"已撤销该同学的《{sel['TOPIC_NAME']}》记录，学生可重新提交", "success")
+    flash(f"已撤销该同学的《{sel['TOPIC_NAME']}》记录并通知学生，学生可重新提交", "success")
     conn.close()
     return redirect(url_for("teacher_monitor"))
 
@@ -1418,44 +1648,35 @@ def teacher_kick(selection_id):
             conn.close()
             return redirect(url_for("teacher_kick", selection_id=selection_id))
         rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (sel["ROUND_ID"],)).fetchone()
-        ts = now_str()
-        conn.execute("BEGIN IMMEDIATE")
-        # 1) 选题记录置为 cancelled（保留历史）
-        conn.execute(
-            "UPDATE SELECTIONS SET STATUS='cancelled', CANCELLED_AT=?, QUEUE_NO=NULL,"
-            " UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
-            (ts, session["user_name"], ts, selection_id))
-        # 2) 留痕：kick 日志含原因与建议全文
-        log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "kick",
-                  sel["STATUS"], "cancelled", operator=session["user_name"],
-                  remark=f"前置要求退课｜原因：{reason}｜建议：{advice}")
-        # 3) 递补策略与学生手动退选一致
-        promoted = None
-        if sel["STATUS"] == "confirmed":
-            if rnd["PROMOTE_MODE"] == "auto":
-                promoted = promote_next(conn, rnd, sel["TOPIC_ID"], operator="system")
-            elif rnd["PROMOTE_MODE"] == "manual":
-                log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], None, "promote",
-                          remark="名额待教师手动递补", operator="system")
-        # 4) 站内通知学生（原因 + 建议 + 重选指引）
+        stage = {"wish": "志愿", "entry": "报名"}.get(sel["STATUS"], "选题")
         miss_text = "；".join(
             f"{c} 要求≥{n}分，你的成绩为{a if a is not None else '未录入'}" for c, n, a in missing)
-        stage = {"wish": "志愿", "entry": "报名"}.get(sel["STATUS"], "选题")
-        notice_title = f"你的{stage}《{sel['TOPIC_NAME']}》已被教师退课"
-        notice_content = (
-            f"同学你好，你对《{sel['TOPIC_NAME']}》（{sel['TOPIC_CODE']}）的{stage}经前置要求核验后被指导教师退课。\n\n"
-            f"【退课原因】{reason}\n\n"
-            f"【前置核验】{miss_text or '详见课题前置要求'}\n\n"
-            f"【老师建议】{advice}\n\n"
-            f"【下一步】请阅读老师建议，在「浏览题库」中选择与你当前能力匹配的课题重新{stage}；"
-            f"如对退课有疑问，请与指导教师沟通。")
-        conn.execute(
-            "INSERT INTO NOTICES(USER_ID,TITLE,CONTENT,KIND,TOPIC_ID,PUBLISHED_AT,CREATED_BY,CREATED_AT,FLAG)"
-            " VALUES(?,?,?,'kick',?,?,?,?,1)",
-            (sel["USER_ID"], notice_title, notice_content, sel["TOPIC_ID"], ts,
-             session["user_name"], ts))
+        if ok:
+            # 前置要求已满足：属于教师代为退选（学生次数用尽/截止锁定/线下沟通等）
+            notice_title = f"你的{stage}《{sel['TOPIC_NAME']}》已被教师代为退选"
+            notice_content = (
+                f"同学你好，你对《{sel['TOPIC_NAME']}》（{sel['TOPIC_CODE']}）的{stage}已由指导教师代为退选。\n\n"
+                f"【退选原因】{reason}\n\n【老师建议】{advice}\n\n"
+                f"【说明】本次由教师操作，不计入你的退选次数；名额按轮次递补策略处理。\n\n"
+                f"【下一步】请到「浏览题库」重新选择合适课题；如已到截止时间，请与教师确认补选安排。")
+            remark = f"教师代为退选｜原因：{reason}｜建议：{advice}"
+        else:
+            notice_title = f"你的{stage}《{sel['TOPIC_NAME']}》已被教师退课"
+            notice_content = (
+                f"同学你好，你对《{sel['TOPIC_NAME']}》（{sel['TOPIC_CODE']}）的{stage}经前置要求核验后被指导教师退课。\n\n"
+                f"【退课原因】{reason}\n\n"
+                f"【前置核验】{miss_text or '详见课题前置要求'}\n\n"
+                f"【老师建议】{advice}\n\n"
+                f"【说明】本次退课由教师操作，不计入你的退选次数。\n\n"
+                f"【下一步】请阅读老师建议，在「浏览题库」中选择与你当前能力匹配的课题重新{stage}；"
+                f"如对退课有疑问，请与指导教师沟通。")
+            remark = f"前置要求退课｜原因：{reason}｜建议：{advice}"
+        conn.execute("BEGIN IMMEDIATE")
+        promoted = close_selection(conn, sel, rnd, session["user_name"], remark,
+                                   action="kick",
+                                   notice=(notice_title, notice_content, "kick"))
         conn.execute("COMMIT")
-        msg = f"已退掉 {sel['REAL_NAME']} 的《{sel['TOPIC_NAME']}》，学生将收到退课通知（含原因与建议）"
+        msg = f"已退掉 {sel['REAL_NAME']} 的《{sel['TOPIC_NAME']}》，学生将收到站内通知（含原因与建议）"
         if promoted:
             msg += "，候补同学已自动递补"
         flash(msg, "success")
@@ -1464,6 +1685,97 @@ def teacher_kick(selection_id):
     conn.close()
     return render_template("teacher/kick.html", sel=sel, topic=topic, missing=missing,
                            scores=scores, prereq_ok=ok)
+
+
+@app.route("/teacher/cancel-request/<int:req_id>", methods=["POST"])
+@login_required("teacher")
+def teacher_cancel_request(req_id):
+    """处理学生的退选/改选申请：同意即代为退选（不占学生次数、按策略递补），驳回也通知学生"""
+    conn = get_conn()
+    req = conn.execute(
+        "SELECT q.*, t.TOPIC_NAME, t.TOPIC_CODE, t.TEACHER_ID, u.REAL_NAME, u.USER_NO"
+        " FROM CANCEL_REQUESTS q JOIN TOPICS t ON t.ID=q.TOPIC_ID"
+        " JOIN USERS u ON u.ID=q.USER_ID WHERE q.ID=? AND q.FLAG=1", (req_id,)).fetchone()
+    if not req or req["TEACHER_ID"] != session["user_id"]:
+        flash("申请不存在或无权处理", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    if req["STATUS"] != "pending":
+        flash("该申请已处理，无需重复操作", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    action = request.form.get("action")
+    remark = request.form.get("remark", "").strip()[:300]
+    if action not in ("approve", "reject"):
+        flash("未知操作", "error")
+        conn.close()
+        return redirect(url_for("teacher_monitor"))
+    sel = conn.execute("SELECT * FROM SELECTIONS WHERE ID=?", (req["SELECTION_ID"],)).fetchone()
+    rnd = conn.execute("SELECT * FROM ROUNDS WHERE ID=?", (req["ROUND_ID"],)).fetchone()
+    ts = now_str()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        fresh = conn.execute("SELECT STATUS FROM CANCEL_REQUESTS WHERE ID=?",
+                             (req_id,)).fetchone()
+        if not fresh or fresh["STATUS"] != "pending":
+            conn.execute("ROLLBACK")
+            flash("该申请已被处理，请刷新页面查看最新状态", "error")
+        elif not sel or sel["STATUS"] not in ACTIVE_STATUSES:
+            conn.execute(
+                "UPDATE CANCEL_REQUESTS SET STATUS='rejected', HANDLE_REMARK=?, HANDLED_BY=?,"
+                " HANDLED_AT=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                ("选题记录已失效，系统自动关闭", session["user_name"], ts,
+                 session["user_name"], ts, req_id))
+            conn.execute("COMMIT")
+            flash("该选题记录已失效（可能已被处理），申请已自动关闭", "error")
+        elif action == "approve":
+            notice = (
+                "你的退选申请已通过",
+                f"同学你好，你提交的《{req['TOPIC_NAME']}》（{req['TOPIC_CODE']}）退选申请已由指导教师处理。\n\n"
+                f"【你的说明】{req['REASON']}\n\n"
+                f"【老师意见】{remark or '同意退选，请重新选择合适课题'}\n\n"
+                f"【说明】本次由教师代为退选，不计入你的退选次数；名额按轮次递补策略处理。\n\n"
+                f"【下一步】请到「浏览题库」重新选择课题；如本轮已截止，请与教师确认补选安排。",
+                "kick")
+            promoted = close_selection(
+                conn, sel, rnd, session["user_name"],
+                f"学生申请退选，教师同意｜学生说明：{req['REASON']}｜教师意见：{remark or '无'}",
+                action="cancel", notice=notice, keep_request_id=req_id)
+            conn.execute(
+                "UPDATE CANCEL_REQUESTS SET STATUS='approved', HANDLE_REMARK=?, HANDLED_BY=?,"
+                " HANDLED_AT=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                (remark or "同意退选", session["user_name"], ts, session["user_name"], ts, req_id))
+            log_event(conn, req["ROUND_ID"], req["TOPIC_ID"], req["USER_ID"], "approve",
+                      sel["STATUS"], "cancelled", operator=session["user_name"],
+                      remark=f"教师同意退选申请｜{remark or '无'}｜已通知学生")
+            conn.execute("COMMIT")
+            msg = f"已同意 {req['REAL_NAME']} 的退选申请，记录已取消并通知学生"
+            if promoted:
+                msg += "，候补同学已自动递补"
+            flash(msg, "success")
+        else:
+            conn.execute(
+                "UPDATE CANCEL_REQUESTS SET STATUS='rejected', HANDLE_REMARK=?, HANDLED_BY=?,"
+                " HANDLED_AT=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
+                (remark or "不同意退选", session["user_name"], ts,
+                 session["user_name"], ts, req_id))
+            notify(conn, req["USER_ID"], "你的退选申请未通过",
+                   f"同学你好，你提交的《{req['TOPIC_NAME']}》（{req['TOPIC_CODE']}）退选申请未通过。\n\n"
+                   f"【你的说明】{req['REASON']}\n\n【老师意见】{remark or '请与指导教师当面沟通'}\n\n"
+                   f"【下一步】当前选题仍然有效，如确有特殊情况请直接联系指导教师。",
+                   kind="request", topic_id=req["TOPIC_ID"], operator=session["user_name"])
+            log_event(conn, req["ROUND_ID"], req["TOPIC_ID"], req["USER_ID"], "reject",
+                      sel["STATUS"] if sel else None, sel["STATUS"] if sel else None,
+                      operator=session["user_name"],
+                      remark=f"教师驳回退选申请｜{remark or '无'}｜已通知学生")
+            conn.execute("COMMIT")
+            flash(f"已驳回 {req['REAL_NAME']} 的退选申请，并通知学生", "success")
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        flash(f"处理失败：{e}", "error")
+    finally:
+        conn.close()
+    return redirect(url_for("teacher_monitor"))
 
 
 @app.route("/teacher/promote/<int:selection_id>", methods=["POST"])
@@ -1498,8 +1810,12 @@ def teacher_manual_promote(selection_id):
     log_event(conn, sel["ROUND_ID"], sel["TOPIC_ID"], sel["USER_ID"], "promote",
               "waiting", "confirmed", queue_no=sel["QUEUE_NO"],
               operator=session["user_name"], remark="教师手动递补")
+    notify(conn, sel["USER_ID"], f"《{topic['TOPIC_NAME']}》候补递补成功",
+           f"同学你好，你在《{topic['TOPIC_NAME']}》（{topic['TOPIC_CODE']}）的候补已由教师递补为「已确认」。\n\n"
+           f"【下一步】请到「我的选题」查看，并按教师要求开始课题。",
+           kind="promote", topic_id=sel["TOPIC_ID"], operator=session["user_name"])
     conn.execute("COMMIT")
-    flash("已手动递补", "success")
+    flash("已手动递补，并通知学生", "success")
     conn.close()
     return redirect(url_for("teacher_monitor"))
 
@@ -1508,13 +1824,14 @@ def teacher_manual_promote(selection_id):
 @login_required("teacher")
 def teacher_export():
     conn = get_conn()
+    rnd = active_round(conn, session["user_id"]) or own_round(conn)
     rows = conn.execute(
         "SELECT t.TOPIC_CODE, t.TOPIC_NAME, u.USER_NO, u.REAL_NAME, u.CLASS_NAME, u.GPA,"
         " s.STATUS, s.WISH_NO, s.QUEUE_NO, s.SELECTED_AT FROM SELECTIONS s"
         " JOIN TOPICS t ON t.ID=s.TOPIC_ID JOIN USERS u ON u.ID=s.USER_ID"
-        " WHERE s.STATUS IN('confirmed','waiting') AND t.TEACHER_ID=?"
+        " WHERE s.STATUS IN('confirmed','waiting') AND s.ROUND_ID=? AND t.TEACHER_ID=?"
         " ORDER BY t.TOPIC_CODE, s.STATUS, s.QUEUE_NO",
-        (session["user_id"],),
+        (rnd["ID"] if rnd else 0, session["user_id"]),
     ).fetchall()
     conn.close()
     buf = io.StringIO()
@@ -1580,6 +1897,18 @@ def admin_users():
                 flash("登记学生必须选择所属指导教师", "error")
                 conn.close()
                 return redirect(url_for("admin_users"))
+            if role != "student":
+                advisor = None   # 教师/管理员不挂指导教师，避免出现“教师也有导师”的脏数据
+            try:
+                gpa = float(request.form.get("gpa", 0) or 0)
+            except ValueError:
+                flash("绩点格式不正确（应为 0~5 的数字）", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
+            if not 0 <= gpa <= 5:
+                flash("绩点需在 0~5 之间", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
             if conn.execute("SELECT ID FROM USERS WHERE USER_NAME=? OR USER_NO=?",
                             (name, no)).fetchone():
                 flash("登录名或学号/工号已存在", "error")
@@ -1589,7 +1918,7 @@ def admin_users():
                     " VALUES(?,?,?,?,?,?,?,?,'active','admin',?,1)",
                     (no, name, generate_password_hash(request.form.get("password") or "123456"),
                      request.form["real_name"].strip(), request.form.get("class_name", "").strip(),
-                     float(request.form.get("gpa", 0) or 0), role, advisor, ts))
+                     gpa, role, advisor, ts))
                 flash(f"用户 {name} 已创建，初始密码 {request.form.get('password') or '123456'}", "success")
         elif action == "edit":
             role = request.form.get("role", "")
@@ -1602,16 +1931,29 @@ def admin_users():
                 flash("学生必须有所属指导教师", "error")
                 conn.close()
                 return redirect(url_for("admin_users"))
+            if role != "student":
+                advisor = None
+            try:
+                gpa = float(request.form.get("gpa", 0) or 0)
+            except ValueError:
+                flash("绩点格式不正确（应为 0~5 的数字）", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
+            if not 0 <= gpa <= 5:
+                flash("绩点需在 0~5 之间", "error")
+                conn.close()
+                return redirect(url_for("admin_users"))
             conn.execute(
                 "UPDATE USERS SET REAL_NAME=?,CLASS_NAME=?,GPA=?,ROLE=?,ADVISOR_ID=?,UPDATED_BY=?,UPDATED_AT=? WHERE ID=?",
                 (request.form["real_name"].strip(), request.form.get("class_name", "").strip(),
-                 float(request.form.get("gpa", 0) or 0), role, advisor, me, ts,
-                 int(request.form["user_id"])))
+                 gpa, role, advisor, me, ts, to_int(request.form.get("user_id"))))
             flash("用户信息已更新", "success")
         elif action == "toggle":
-            uid = int(request.form["user_id"])
+            uid = to_int(request.form.get("user_id"))
             user = conn.execute("SELECT * FROM USERS WHERE ID=?", (uid,)).fetchone()
-            if user["ROLE"] == "admin":
+            if not user:
+                flash("用户不存在", "error")
+            elif user["ROLE"] == "admin":
                 flash("不能停用管理员账号", "error")
             else:
                 new_status = "disabled" if user["STATUS"] == "active" else "active"
@@ -1621,19 +1963,36 @@ def admin_users():
         elif action == "reset_pwd":
             conn.execute(
                 "UPDATE USERS SET PASSWORD_HASH=?, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
-                (generate_password_hash("123456"), me, ts, int(request.form["user_id"])))
+                (generate_password_hash("123456"), me, ts, to_int(request.form.get("user_id"))))
             flash("密码已重置为 123456", "success")
         elif action == "delete":
-            uid = int(request.form["user_id"])
+            uid = to_int(request.form.get("user_id"))
             user = conn.execute("SELECT * FROM USERS WHERE ID=?", (uid,)).fetchone()
-            if user["ROLE"] == "admin":
+            if not user:
+                flash("用户不存在", "error")
+            elif user["ROLE"] == "admin":
                 flash("不能删除管理员账号", "error")
             else:
                 used = conn.execute(
                     "SELECT COUNT(*) c FROM SELECTIONS WHERE USER_ID=? AND STATUS != 'cancelled'",
                     (uid,)).fetchone()["c"]
+                # 教师名下的学生/课题/轮次是其数据归属，删除会造成“孤儿数据”，必须先转移
+                dep_students = dep_topics = dep_rounds = 0
+                if user["ROLE"] == "teacher":
+                    dep_students = conn.execute(
+                        "SELECT COUNT(*) c FROM USERS WHERE ADVISOR_ID=? AND ROLE='student' AND FLAG=1",
+                        (uid,)).fetchone()["c"]
+                    dep_topics = conn.execute(
+                        "SELECT COUNT(*) c FROM TOPICS WHERE TEACHER_ID=? AND FLAG=1",
+                        (uid,)).fetchone()["c"]
+                    dep_rounds = conn.execute(
+                        "SELECT COUNT(*) c FROM ROUNDS WHERE TEACHER_ID=? AND FLAG=1",
+                        (uid,)).fetchone()["c"]
                 if used:
                     flash("该用户有选题记录，不能删除（可停用）", "error")
+                elif dep_students or dep_topics or dep_rounds:
+                    flash(f"该教师名下仍有 {dep_students} 名学生、{dep_topics} 个课题、"
+                          f"{dep_rounds} 个轮次，请先转移学生并处理课题后再删除，或直接停用账号", "error")
                 else:
                     conn.execute("UPDATE USERS SET FLAG=0, UPDATED_BY=?, UPDATED_AT=? WHERE ID=?",
                                  (me, ts, uid))
@@ -1725,16 +2084,23 @@ def unread_notice_count(conn, user_id):
 
 @app.context_processor
 def inject_unread():
-    """向学生页面注入未读通知数"""
-    count = 0
-    if session.get("role") == "student" and "user_id" in session:
-        try:
-            conn = get_conn()
+    """学生注入未读通知数；教师注入待处理的退选申请数（导航红点）"""
+    count = pending_req = 0
+    if "user_id" not in session:
+        return dict(unread_notices=0, pending_requests=0)
+    try:
+        conn = get_conn()
+        if session.get("role") == "student":
             count = unread_notice_count(conn, session["user_id"])
-            conn.close()
-        except Exception:
-            count = 0
-    return dict(unread_notices=count)
+        elif session.get("role") == "teacher":
+            pending_req = conn.execute(
+                "SELECT COUNT(*) c FROM CANCEL_REQUESTS q JOIN TOPICS t ON t.ID=q.TOPIC_ID"
+                " WHERE q.STATUS='pending' AND q.FLAG=1 AND t.TEACHER_ID=?",
+                (session["user_id"],)).fetchone()["c"]
+        conn.close()
+    except Exception:
+        count = pending_req = 0
+    return dict(unread_notices=count, pending_requests=pending_req)
 
 
 # ---------------- 静态展示页（原型 / 项目主页 / 使用流程） ----------------

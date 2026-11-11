@@ -2,7 +2,8 @@
 {% block title %}结果公示 - 学生选题系统{% endblock %}
 {% block content %}
 <div class="card">
-  <h3>选题结果公示（全员可见）</h3>
+  <h3>选题结果公示{% if round %}（{{ round.ROUND_NAME }}）{% endif %}</h3>
+  <p class="flow-tip">仅展示你所在指导教师本轮已确认的选题结果，历史轮次不混入。</p>
   <table>
     <thead><tr><th>题目编号</th><th>题目名称</th><th>选题人</th><th>班级</th><th>选题时间</th></tr></thead>
     <tbody>

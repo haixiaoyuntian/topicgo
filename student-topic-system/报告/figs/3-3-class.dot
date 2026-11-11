@@ -1,0 +1,89 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", fontname="Noto Sans CJK SC", fontsize=11, pad="0.2", nodesep="0.45", ranksep="0.55"];
+  node [shape=plaintext, fontname="Noto Sans CJK SC", fontsize=9];
+  edge [color="#6b8cae", fontname="Noto Sans CJK SC", fontsize=9, arrowhead=none];
+
+  User [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+  <TR><TD BGCOLOR="#d9e6f7" ALIGN="CENTER"><B>User 用户</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- id: int</TD></TR>
+  <TR><TD ALIGN="LEFT">- userNo / name / role</TD></TR>
+  <TR><TD ALIGN="LEFT">- className / gpa</TD></TR>
+  <TR><TD ALIGN="LEFT">- advisorId: int</TD></TR>
+  
+  <TR><TD ALIGN="LEFT">+ login(pwd)</TD></TR>
+  
+  </TABLE>>];
+
+  Round [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+  <TR><TD BGCOLOR="#d9e6f7" ALIGN="CENTER"><B>Round 选题轮次</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- name / rule: str</TD></TR>
+  <TR><TD ALIGN="LEFT">- startAt / endAt</TD></TR>
+  <TR><TD ALIGN="LEFT">- maxCancel / lockHours</TD></TR>
+  <TR><TD ALIGN="LEFT">- promoteMode: auto|manual|off</TD></TR>
+  <TR><TD ALIGN="LEFT">+ isOpen(now)</TD></TR>
+  
+  </TABLE>>];
+
+  Topic [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+  <TR><TD BGCOLOR="#d9e6f7" ALIGN="CENTER"><B>Topic 课题</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- code / name</TD></TR>
+  <TR><TD ALIGN="LEFT">- maxNum</TD></TR>
+  <TR><TD ALIGN="LEFT">- targetClasses</TD></TR>
+  <TR><TD ALIGN="LEFT">- prereqRules</TD></TR>
+  
+  <TR><TD ALIGN="LEFT">+ visibleTo(className)</TD></TR>
+  
+  </TABLE>>];
+
+  Selection [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#fff7e6">
+  <TR><TD BGCOLOR="#ffe8bf" ALIGN="CENTER"><B>Selection 选题记录</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- status: confirmed/waiting/…</TD></TR>
+  <TR><TD ALIGN="LEFT">- wishNo / queueNo</TD></TR>
+  <TR><TD ALIGN="LEFT">- selectedAt / cancelledAt</TD></TR>
+  
+  <TR><TD ALIGN="LEFT">+ cancel(operator, remark)</TD></TR>
+  </TABLE>>];
+
+  Req [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eaf7ee">
+  <TR><TD BGCOLOR="#c9e8d4" ALIGN="CENTER"><B>CancelRequest 退选申请</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- reason</TD></TR>
+  <TR><TD ALIGN="LEFT">- status: pending/approved/rejected</TD></TR>
+  <TR><TD ALIGN="LEFT">- handleRemark / handledBy</TD></TR>
+  <TR><TD ALIGN="LEFT">+ approve(operator)</TD></TR>
+  
+  </TABLE>>];
+
+  Event [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+  <TR><TD BGCOLOR="#d9e6f7" ALIGN="CENTER"><B>SelectionEvent 操作日志</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- action: select/cancel/…</TD></TR>
+  <TR><TD ALIGN="LEFT">- fromStatus / toStatus</TD></TR>
+  <TR><TD ALIGN="LEFT">- operator / remark</TD></TR>
+  <TR><TD ALIGN="LEFT">- operatedAt</TD></TR>
+  <TR><TD ALIGN="LEFT">+ append()  «immutable»</TD></TR>
+  </TABLE>>];
+
+  Notice [label=<
+  <TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="3" BGCOLOR="#eef3fb">
+  <TR><TD BGCOLOR="#d9e6f7" ALIGN="CENTER"><B>Notice 站内通知</B></TD></TR>
+  <TR><TD ALIGN="LEFT">- title / content</TD></TR>
+  <TR><TD ALIGN="LEFT">- kind / readFlag</TD></TR>
+  </TABLE>>];
+
+  User -> Topic [label="1..*  发布"];
+  User -> Round [label="1..*  管理"];
+  User -> Selection [label="1  参与"];
+  Topic -> Selection [label="1..*  被选"];
+  Round -> Selection [label="1..*  归属"];
+  Selection -> Req [label="1  0..1  申请"];
+  Selection -> Event [label="1..*  留痕"];
+  Selection -> Notice [label="0..*  通知", style=dashed];
+  {rank=same; User; Round; Topic;}
+  {rank=same; Selection; Req;}
+  {rank=same; Event; Notice;}
+}

@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% block title %}前置要求退课 - 学生选题系统{% endblock %}
+{% block title %}{{ '前置要求退课' if not prereq_ok else '教师代为退选' }} - 学生选题系统{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h2>⛔ 前置要求退课</h2>
-    <p class="page-sub">学生成绩不满足课题前置要求时，可在此退课并告知原因与建议，学生将收到站内通知</p>
+    <h2>⛔ {{ '前置要求退课' if not prereq_ok else '教师代为退选' }}</h2>
+    <p class="page-sub">
+      {% if not prereq_ok %}该生成绩不满足课题前置要求，可在此退课并告知原因与建议，学生将收到站内通知。
+      {% else %}该生已无法自助退选（次数用尽 / 截止前锁定 / 线下沟通），可在此代为退选；本次不计入学生退选次数，学生将收到站内通知。{% endif %}
+    </p>
   </div>
 </div>
 
@@ -16,7 +19,7 @@
       <tr><td>选题</td><td>{{ sel.TOPIC_CODE }} 《{{ sel.TOPIC_NAME }}》（{{ {'confirmed':'已确认','waiting':'候补中','wish':'志愿待分配','entry':'待抽签'}.get(sel.STATUS, sel.STATUS) }}）</td></tr>
       <tr><td>前置要求</td><td>{{ topic.PREREQ_TEXT or '（未设置）' }}</td></tr>
       <tr><td>核验结果</td><td>
-        {% if prereq_ok %}<span class="tag tag-green">已满足前置要求</span>
+        {% if prereq_ok %}<span class="tag tag-green">已满足前置要求（本次属于教师代为退选）</span>
         {% else %}<span class="tag tag-red">不满足</span>
           <ul style="margin:6px 0 0;padding-left:18px;">
           {% for cname, need, actual in missing %}
@@ -33,16 +36,17 @@
 </div>
 
 <div class="card">
-  <h3>退课原因与建议（将一并通知学生，请认真填写）</h3>
+  <h3>{{ '退课原因与建议（将一并通知学生）' if not prereq_ok else '代退原因与建议（将一并通知学生）' }}</h3>
   <form method="post" class="vform">
     {{ csrf_input() }}
-    <div class="form-item"><label>退课原因（必填，≤500 字）</label>
+    <div class="form-item"><label>原因（必填，≤500 字）</label>
       <textarea name="reason" rows="3" required maxlength="500"
-        placeholder="如：该课题要求先修《数据结构》且成绩≥75分，该生《数据结构》58分未达标，暂不具备完成该课题的基础。"></textarea></div>
+        placeholder="{{ '如：该课题要求先修《数据结构》且成绩≥75分，该生《数据结构》58分未达标，暂不具备完成该课题的基础。' if not prereq_ok else '如：学生反映退选次数已用尽，经沟通确认其与另一门课程时间冲突，同意代为退选。' }}"></textarea></div>
     <div class="form-item"><label>给该生的建议（必填，≤2000 字）</label>
       <textarea name="advice" rows="6" required maxlength="2000"
-        placeholder="如：建议先复习《数据结构》核心内容（线性表、树与图、排序），下学期再挑战AI类课题；本轮可选《基于Flask的图书管理系统》（较易，无前置要求）或《电商销售数据分析与可视化》（中等，重实践）。"></textarea></div>
-    <button class="btn btn-danger" type="submit" onclick="return confirm('确认退课？学生将收到含原因与建议的通知，名额按递补策略处理。')">确认退课并通知学生</button>
+        placeholder="{{ '如：建议先复习《数据结构》核心内容（线性表、树与图、排序），下学期再挑战AI类课题；本轮可选《基于Flask的图书管理系统》（较易，无前置要求）。' if not prereq_ok else '如：建议改选《电商销售数据分析与可视化》（中等，重实践），并在下次选题前留意截止时间，避免再次超限。' }}"></textarea></div>
+    <button class="btn btn-danger" type="submit" onclick="return confirm('确认退掉该记录？学生将收到含原因与建议的通知，名额按递补策略处理。')">
+      {{ '确认退课并通知学生' if not prereq_ok else '确认代退并通知学生' }}</button>
     <a class="btn btn-default" href="{{ url_for('teacher_monitor') }}">取消</a>
   </form>
 </div>

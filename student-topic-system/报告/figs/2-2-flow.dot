@@ -1,0 +1,29 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.18", nodesep="0.28", ranksep="0.32"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2, margin="0.12,0.06"];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.65];
+
+  rankdir=TB; node [style="rounded,filled"];
+  start [shape=ellipse, fillcolor="#d9e6f7", label="开始"];
+  a [label="学生登录；读取指导教师与当前轮次"];
+  b [label="轮次开放？班级允许？课题面向本班？已有选题？", shape=diamond, style="filled", fillcolor="#fff7e6"];
+  c [label="拒绝并提示具体原因\n（不写库）", fillcolor="#ffecec", color="#d46b6b"];
+  d [label="策略判定：先到先得 / 绩点优先 / 多志愿 / 抽签"];
+  e [label="BEGIN IMMEDIATE：开启写事务", fillcolor="#fff4e6", color="#e8a33d"];
+  f [label="count(confirmed) < MAX_NUM ?", shape=diamond, style="filled", fillcolor="#fff7e6"];
+  g [label="写入 confirmed + 日志", fillcolor="#eaf7ee", color="#4a9d63"];
+  h [label="候补开启？", shape=diamond, style="filled", fillcolor="#fff7e6"];
+  i [label="写入 waiting + 候补序号", fillcolor="#eaf7ee", color="#4a9d63"];
+  j [label="回滚：提示已满员", fillcolor="#ffecec", color="#d46b6b"];
+  k [label="COMMIT；刷新页面", fillcolor="#eaf7ee", color="#4a9d63"];
+  m [shape=ellipse, fillcolor="#d9e6f7", label="结束"];
+  start->a->b;
+  b->c [label="否"]; b->d [label="是"];
+  c->m;
+  d->e->f;
+  f->g [label="是"]; f->h [label="否"];
+  h->i [label="是"]; h->j [label="否"];
+  g->k; i->k; k->m;
+  j->m;
+}

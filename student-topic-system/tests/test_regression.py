@@ -636,6 +636,179 @@ check("成绩入口同时有课程名与分数", 'name="course_name"' in body an
 check("成绩入口保留绩点录入", 'name="gpa"' in body)
 check("展开按钮会同时显示两个表单", "querySelectorAll('.score-form')" in body)
 
+# ---------- 20. 退选锁定闭环：学生申请 → 教师代退 ----------
+print("\n== 20. 退选锁定闭环（学生申请 → 教师代退 → 递补 → 通知）==")
+
+
+def clear_requests_notices():
+    conn = sqlite3.connect(DB)
+    conn.execute("DELETE FROM CANCEL_REQUESTS")
+    conn.execute("DELETE FROM NOTICES")
+    conn.commit()
+    conn.close()
+
+
+def uid(name):
+    return sql("SELECT ID FROM USERS WHERE USER_NAME=?", (name,))[0]["ID"]
+
+
+def notice_count(user_id, kw):
+    return sql("SELECT COUNT(*) c FROM NOTICES WHERE USER_ID=? AND (TITLE LIKE ? OR CONTENT LIKE ?)",
+               (user_id, f"%{kw}%", f"%{kw}%"))[0]["c"]
+
+
+clear_requests_notices()
+reset_round(rule="first_come", max_cancel=1, cancel_lock_hours=0)
+zs = login("zhangsan")
+post(zs, "/student/select/1")
+sid_a = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("zhangsan"),))[0]["ID"]
+post(zs, f"/student/cancel/{sid_a}", data={"reason": REASON})     # 用掉唯一一次退选
+post(zs, "/student/select/2")
+sid_b = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("zhangsan"),))[0]["ID"]
+body = post(zs, f"/student/cancel/{sid_b}", data={"reason": REASON})
+check("退选次数用尽后不能自助退选", "退选次数已用完" in body)
+body = post(zs, f"/student/cancel-request/{sid_b}", data={"reason": "与实验课时间冲突，必须改选"})
+check("退选次数用尽仍可提交申请", "申请已提交" in body)
+check("申请落库为待处理",
+      sql("SELECT COUNT(*) c FROM CANCEL_REQUESTS WHERE SELECTION_ID=? AND STATUS='pending'", (sid_b,))[0]["c"] == 1)
+check("申请期间记录保持已确认", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_b,))[0]["STATUS"] == "confirmed")
+body = post(zs, f"/student/cancel-request/{sid_b}", data={"reason": "重复提交"})
+check("重复申请被拒绝且不重复落库",
+      "已提交过" in body and sql("SELECT COUNT(*) c FROM CANCEL_REQUESTS")[0]["c"] == 1)
+body = get(zs, "/student/mine")
+check("学生可在我的选题查看申请进度", "我的退选申请" in body and "待处理" in body and "与实验课时间冲突" in body)
+tea = login("teacher")
+body = get(tea, "/teacher/monitor")
+check("教师监控页可见待处理申请", "学生退选/改选申请" in body and "与实验课时间冲突" in body)
+check("教师导航出现申请红点", 'class="badge">1<' in get(tea, "/teacher/index"))
+req_id = sql("SELECT ID FROM CANCEL_REQUESTS WHERE STATUS='pending'")[0]["ID"]
+body = post(tea, f"/teacher/cancel-request/{req_id}",
+            data={"action": "approve", "remark": "同意，改选 T04"})
+check("教师同意申请", "已同意" in body)
+check("同意后选题记录被取消", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_b,))[0]["STATUS"] == "cancelled")
+check("申请状态更新为已同意",
+      sql("SELECT STATUS FROM CANCEL_REQUESTS WHERE ID=?", (req_id,))[0]["STATUS"] == "approved")
+check("同意代退写入日志",
+      sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='approve'")[0]["c"] == 1)
+check("学生收到申请通过通知", notice_count(uid("zhangsan"), "退选申请已通过") == 1)
+check("教师代退不计入学生退选次数",
+      sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='cancel' AND OPERATOR='zhangsan'")[0]["c"] == 1)
+post(zs, "/student/select/4")
+check("代退后学生可重新选题",
+      sql("SELECT COUNT(*) c FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("zhangsan"),))[0]["c"] == 1)
+body = post(tea, f"/teacher/cancel-request/{req_id}", data={"action": "approve"})
+check("已处理的申请不能重复处理", "已处理" in body)
+
+# 驳回：记录保持，学生收到驳回通知
+clear_requests_notices()
+reset_round(rule="first_come", max_cancel=5, cancel_lock_hours=0)
+post(login("lisi"), "/student/select/2")
+sid_l = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("lisi"),))[0]["ID"]
+post(login("lisi"), f"/student/cancel-request/{sid_l}", data={"reason": "想换一个更简单的题目"})
+req_l = sql("SELECT ID FROM CANCEL_REQUESTS WHERE STATUS='pending'")[0]["ID"]
+body = post(login("teacher"), f"/teacher/cancel-request/{req_l}",
+            data={"action": "reject", "remark": "该题名额已锁定，建议保留"})
+check("教师驳回申请", "已驳回" in body)
+check("驳回后记录仍为已确认", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_l,))[0]["STATUS"] == "confirmed")
+check("驳回状态落库", sql("SELECT STATUS FROM CANCEL_REQUESTS WHERE ID=?", (req_l,))[0]["STATUS"] == "rejected")
+check("学生收到驳回通知", notice_count(uid("lisi"), "未通过") == 1)
+
+# 教师直接代退（学生线下联系，不经过申请）
+clear_requests_notices()
+reset_round(rule="first_come", max_cancel=1, cancel_lock_hours=0)
+post(login("wangwu"), "/student/select/1")
+sid_w = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("wangwu"),))[0]["ID"]
+body = post(login("teacher"), f"/teacher/kick/{sid_w}",
+            data={"reason": "学生退选次数已用尽，经沟通同意代退", "advice": "请改选 T04 数据分析"})
+check("教师可直接代退已确认记录", "已退掉" in body
+      and sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_w,))[0]["STATUS"] == "cancelled")
+check("直接代退写 kick 日志",
+      sql("SELECT COUNT(*) c FROM SELECTION_EVENTS WHERE ACTION='kick' AND REMARK LIKE '%教师代为退选%'")[0]["c"] == 1)
+check("直接代退通知学生且说明不计次数", notice_count(uid("wangwu"), "代为退选") == 1)
+
+# 退选释放名额后候补自动递补，并通知递补者
+clear_requests_notices()
+reset_round(rule="first_come", max_cancel=5, cancel_lock_hours=0)
+for who in ["zhangsan", "lisi", "wangwu"]:
+    post(login(who), "/student/select/1")          # T01 上限 3，满员
+post(login("zhaoliu"), "/student/select/1")        # 候补第 1 位
+check("满员后进入候补",
+      sql("SELECT STATUS FROM SELECTIONS WHERE USER_ID=? AND STATUS='waiting'", (uid("zhaoliu"),))[0]["STATUS"] == "waiting")
+sid_z = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("zhangsan"),))[0]["ID"]
+post(login("zhangsan"), f"/student/cancel/{sid_z}", data={"reason": REASON})
+check("学生退选后候补自动递补",
+      sql("SELECT STATUS FROM SELECTIONS WHERE USER_ID=?", (uid("zhaoliu"),))[0]["STATUS"] == "confirmed")
+check("递补结果通知候补学生", notice_count(uid("zhaoliu"), "候补递补成功") == 1)
+
+# 教师撤销误提交也通知学生
+clear_requests_notices()
+reset_round(rule="multi_wish", max_cancel=5, cancel_lock_hours=0)
+post(login("chenqi"), "/student/wish", data={"wishes": ["1:T02"]})
+wish_id = sql("SELECT ID FROM SELECTIONS WHERE STATUS='wish'")[0]["ID"]
+post(login("teacher"), f"/teacher/revoke/{wish_id}")
+check("教师撤销后通知学生", notice_count(uid("chenqi"), "已被教师撤销") == 1)
+
+# 轮次截止后：学生不能自助退选，教师仍可代退（迟到申请/线下沟通的出口）
+clear_requests_notices()
+reset_round(rule="first_come", max_cancel=5, cancel_lock_hours=0)
+post(login("zhaoliu"), "/student/select/2")
+sid_dl = sql("SELECT ID FROM SELECTIONS WHERE USER_ID=? AND STATUS='confirmed'", (uid("zhaoliu"),))[0]["ID"]
+conn = sqlite3.connect(DB)
+conn.execute("UPDATE ROUNDS SET END_AT='2020-01-02 00:00:00'")
+conn.commit()
+conn.close()
+body = post(login("zhaoliu"), f"/student/cancel/{sid_dl}", data={"reason": REASON})
+check("轮次截止后不能自助退选", "已截止" in body)
+check("截止后记录保持已确认", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_dl,))[0]["STATUS"] == "confirmed")
+body = post(login("teacher"), f"/teacher/kick/{sid_dl}",
+            data={"reason": "轮次已截止，学生线下来申请调整", "advice": "下一轮补选"})
+check("教师可在截止后代为退选", sql("SELECT STATUS FROM SELECTIONS WHERE ID=?", (sid_dl,))[0]["STATUS"] == "cancelled")
+
+# ---------- 21. 分配/抽签边界（记录不能卡在中间状态） ----------
+print("\n== 21. 分配与抽签边界 ==")
+clear_requests_notices()
+reset_round(rule="multi_wish", max_cancel=5, cancel_lock_hours=0, max_wish=3)
+tid_t01 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T01'")[0]["ID"]
+conn = sqlite3.connect(DB)   # 先把 T01（上限 3）占满，模拟多人已确认
+for who in ["zhangsan", "lisi", "wangwu"]:
+    conn.execute(
+        "INSERT INTO SELECTIONS(ROUND_ID,TOPIC_ID,USER_ID,STATUS,SELECTED_AT,CREATED_BY,CREATED_AT,FLAG)"
+        " VALUES(?,?,?,'confirmed','2026-01-01 00:00:00','test','2026-01-01 00:00:00',1)",
+        (rid, tid_t01, uid(who)))
+conn.commit()
+conn.close()
+post(login("zhaoliu"), "/student/wish", data={"wishes": ["2:T01"]})   # 只填第二志愿且题目已满
+post(login("teacher"), "/teacher/allocate", data={"round_id": rid})
+st = sql("SELECT STATUS FROM SELECTIONS WHERE USER_ID=? AND TOPIC_ID=?", (uid("zhaoliu"), tid_t01))[0]["STATUS"]
+check("只填第二志愿也能转候补（不再卡在待分配）", st == "waiting")
+
+clear_requests_notices()
+reset_round(rule="lottery", max_cancel=5, cancel_lock_hours=0)
+post(login("lisi"), "/student/wish", data={"wishes": ["1:T02"]})
+tid_t02 = sql("SELECT ID FROM TOPICS WHERE TOPIC_CODE='T02'")[0]["ID"]
+post(login("teacher"), "/teacher/topics", data={"action": "toggle", "topic_id": tid_t02})  # 关闭 T02
+post(login("teacher"), "/teacher/lottery", data={"round_id": rid})
+check("关闭课题的报名在抽签时被作废",
+      sql("SELECT STATUS FROM SELECTIONS WHERE USER_ID=?", (uid("lisi"),))[0]["STATUS"] == "cancelled")
+check("课题关闭导致报名作废时通知学生", notice_count(uid("lisi"), "报名已作废") == 1)
+post(login("teacher"), "/teacher/topics", data={"action": "toggle", "topic_id": tid_t02})  # 恢复开放
+
+# 轮次时间非法 / 人数上限非法：给中文提示而不是 500
+body = post(login("teacher"), "/teacher/round",
+            data={"action": "create", "round_name": "非法轮次", "rule": "first_come",
+                  "start_at": "2030-01-02 00:00:00", "end_at": "2030-01-01 00:00:00",
+                  "max_wish": "abc", "max_cancel": "x", "cancel_lock_hours": "y"})
+check("轮次开始晚于结束被拒绝", "开始时间必须早于结束时间" in body)
+body = post(login("teacher"), "/teacher/topics",
+            data={"action": "add", "topic_code": "T99", "topic_name": "非法人数", "max_num": "abc"})
+check("课题人数非法被拒绝", "人数上限需为 1~99 的整数" in body)
+body = post(login("admin"), "/admin/users",
+            data={"action": "add", "user_name": "badgpa", "user_no": "20990001",
+                  "real_name": "测试绩点", "role": "student", "advisor_id": TEACHER_ID, "gpa": "abc"})
+check("管理员登记非法绩点被拒绝", "绩点格式不正确" in body)
+body = post(login("admin"), "/admin/users", data={"action": "delete", "user_id": TEACHER_ID})
+check("名下有学生/课题的教师不能删除", "请先转移学生" in body)
+
 # ---------- 汇总 ----------
 print(f"\n===== 结果: {len(passed)} 通过, {len(failed)} 失败 =====")
 if failed:

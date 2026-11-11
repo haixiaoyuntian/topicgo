@@ -1,0 +1,23 @@
+digraph G {
+
+  graph [bgcolor="white", fontname="Noto Sans CJK SC", fontsize=12, pad="0.18", nodesep="0.28", ranksep="0.32"];
+  node [fontname="Noto Sans CJK SC", fontsize=11, shape=box, style="rounded,filled", color="#4a6fa5", fillcolor="#eef3fb", penwidth=1.2, margin="0.12,0.06"];
+  edge [fontname="Noto Sans CJK SC", fontsize=10, color="#4a6fa5", arrowsize=0.65];
+
+  rankdir=TB;
+  a [label="学生「我的选题」：次数用尽 / 截止锁定 / 志愿报名阶段", fillcolor="#eaf2fb"];
+  b [label="提交退选申请（原因 4~300 字）", fillcolor="#eaf2fb"];
+  c [label="CANCEL_REQUESTS：status = pending", fillcolor="#fff7e6", color="#e8a33d"];
+  d [label="教师端待办：导航红点 + 工作台 + 监控卡片", fillcolor="#fff4e6", color="#e8a33d"];
+  e [shape=diamond, style="filled", fillcolor="#fff7e6", label="审批结果"];
+  f [label="close_selection()：取消 + 日志 + 递补", fillcolor="#eaf7ee", color="#4a9d63"];
+  g [label="通知：已通过，学生可重新选题", fillcolor="#eaf7ee", color="#4a9d63"];
+  h [label="通知：未通过，记录保持不变", fillcolor="#ffecec", color="#d46b6b"];
+  i [label="教师直接「代退」（线下联系场景）", fillcolor="#eaf2fb"];
+  a -> b -> c -> d -> e;
+  e -> f [label="同意"];
+  e -> h [label="驳回"];
+  f -> g;
+  i -> f [style=dashed, label="同一函数"];
+  {rank=same; e; i;}
+}
