@@ -1,0 +1,10 @@
+.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.db
+**/*.db-*
+student-topic-system/tests
+student-topic-system/报告
+student-topic-system/验收
+student-topic-system/design
