@@ -1,0 +1,14 @@
+# 本文件位于代码仓库根目录（仓库下还有 student-topic-system/ 一层项目目录）
+services:
+  - type: web
+    name: topicgo
+    runtime: docker
+    rootDir: student-topic-system
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    healthCheckPath: /login
+    autoDeployTrigger: commit
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true

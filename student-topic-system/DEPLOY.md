@@ -11,20 +11,23 @@
 
 ## 1. 先把部署文件推到仓库
 
-仓库根目录需要以下文件（本仓库已提供）：
+> 本仓库根目录下还有一层 `student-topic-system/` 项目目录，下面的命令都在**仓库根目录**执行。
+
+需要的文件（本仓库已提供）：
 
 ```
-Dockerfile
-.dockerignore
-render.yaml
-src/requirements.txt     # 已加入 gunicorn
-src/app.py               # SECRET_KEY 改为读环境变量
+render.yaml                          # 仓库根目录，含 rootDir: student-topic-system
+student-topic-system/Dockerfile
+student-topic-system/.dockerignore
+student-topic-system/src/requirements.txt   # 已加入 gunicorn
+student-topic-system/src/app.py             # SECRET_KEY 改为读环境变量
 ```
 
 提交并推送：
 
 ```bash
-git add Dockerfile .dockerignore render.yaml src/requirements.txt src/app.py
+cd /workspace                     # 仓库根目录
+git add -A
 git commit -m "chore: 支持 Docker 部署到 Render"
 git push origin main
 ```
@@ -37,6 +40,7 @@ git push origin main
    `https://cnb.cool/jxh-U202414904/software-engineering.git`
    （若页面只允许 GitHub/GitLab/Bitbucket，见第 5 节镜像到 GitHub）；
 4. 填写：
+   - **Root Directory：`student-topic-system`**（重要：本仓库根目录下还有一层项目目录，不填会报 `Dockerfile not found`）
    - Name：`topicgo`
    - Branch：`main`
    - Runtime：**Docker**（Render 会自动识别根目录的 `Dockerfile`）
@@ -66,7 +70,7 @@ https://topicgo-xxxx.onrender.com
 
 ## 4. 用 Blueprint 一键创建（可选）
 
-仓库已含 `render.yaml`（free / singapore / healthCheckPath=/login / 自动生成 SECRET_KEY）：
+仓库根目录已含 `render.yaml`（其中 `rootDir: student-topic-system`，free / singapore / healthCheckPath=/login / 自动生成 SECRET_KEY）：
 
 1. Render 控制台 → **New +** → **Blueprint**；
 2. 选择仓库 → Render 读取 `render.yaml` → **Apply**。

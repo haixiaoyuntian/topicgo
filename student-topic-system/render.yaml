@@ -1,3 +1,5 @@
+# 若把本项目目录单独作为仓库根目录，可直接使用本文件；
+# 当前仓库根目录在上一层，部署请使用仓库根目录的 render.yaml（含 rootDir）。
 services:
   - type: web
     name: topicgo
